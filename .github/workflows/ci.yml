@@ -16,12 +16,35 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      # ae-a8n is consumed as a file: dependency until it is published, so it
-      # has to be built before this package can typecheck or test.
-      - uses: actions/checkout@v5
+      # ae-a8n is consumed as a `file:../ae-a8n` dependency until it is
+      # published, so it has to be present and built before anything here can
+      # typecheck or run.
+      #
+      # ido-bata/ae-a8n is a *private* repository, and the default GITHUB_TOKEN
+      # cannot read another private repository. This job therefore needs a
+      # token stored as AE_A8N_TOKEN.
+      #
+      # The check is explicit and fails loudly rather than skipping: a job that
+      # quietly did not run the tests would be a green CI that proves nothing.
+      # Once ae-a8n is published, this step and the two below it go away.
+      - name: Require a token for the private sibling repository
+        env:
+          AE_A8N_TOKEN: ${{ secrets.AE_A8N_TOKEN }}
+        run: |
+          if [ -z "$AE_A8N_TOKEN" ]; then
+            echo "::error::AE_A8N_TOKEN is not configured on this repository."
+            echo "::error::ido-bata/ae-a8n is private, so the default GITHUB_TOKEN cannot check it out."
+            echo "::error::Add a repository secret with read access to ido-bata/ae-a8n, or publish ae-a8n and switch to a registry dependency."
+            exit 1
+          fi
+
+      - name: Check out ae-a8n
+        uses: actions/checkout@v5
         with:
           repository: ido-bata/ae-a8n
           path: ae-a8n
+          ref: release-0-1-0
+          token: ${{ secrets.AE_A8N_TOKEN }}
 
       - name: Install toolchain
         uses: jdx/mise-action@v2
