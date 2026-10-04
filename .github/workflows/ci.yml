@@ -21,20 +21,22 @@ jobs:
       # typecheck or run.
       #
       # ido-bata/ae-a8n is a *private* repository, and the default GITHUB_TOKEN
-      # cannot read another private repository. This job therefore needs a
-      # token stored as AE_A8N_TOKEN.
+      # cannot read another private repository. This job therefore uses a
+      # fine-grained token, supplied as a secret **on this repository** — the
+      # one whose workflow uses it. The token itself is scoped to ae-a8n alone
+      # with Contents: Read-only; it is not given access to this repository.
       #
-      # The check is explicit and fails loudly rather than skipping: a job that
-      # quietly did not run the tests would be a green CI that proves nothing.
-      # Once ae-a8n is published, this step and the two below it go away.
+      # This step and the two below it are temporary. Once ae-a8n is published,
+      # `dependencies` becomes a registry version, the checkout steps are
+      # deleted, and the token is revoked. See docs/dependency-on-ae-a8n.md.
       - name: Require a token for the private sibling repository
         env:
           AE_A8N_TOKEN: ${{ secrets.AE_A8N_TOKEN }}
         run: |
           if [ -z "$AE_A8N_TOKEN" ]; then
             echo "::error::AE_A8N_TOKEN is not configured on this repository."
-            echo "::error::ido-bata/ae-a8n is private, so the default GITHUB_TOKEN cannot check it out."
-            echo "::error::Add a repository secret with read access to ido-bata/ae-a8n, or publish ae-a8n and switch to a registry dependency."
+            echo "::error::See docs/dependency-on-ae-a8n.md for the exact setup."
+            echo "::error::Short version: a fine-grained token owned by ido-bata, with Repository access = ae-a8n only and Contents = Read-only, stored here as a repository secret named AE_A8N_TOKEN."
             exit 1
           fi
 
@@ -43,8 +45,19 @@ jobs:
         with:
           repository: ido-bata/ae-a8n
           path: ae-a8n
-          ref: release-0-1-0
+          # Branch by default so ae-a8n's fixes reach here without a manual
+          # bump. Override with the AE_A8N_REF repository variable to pin.
+          ref: ${{ vars.AE_A8N_REF || 'release-0-1-0' }}
           token: ${{ secrets.AE_A8N_TOKEN }}
+
+      # Validation evidence has to be bound to an immutable identity, and
+      # "release-0-1-0" is not one. Recording the resolved SHA makes each run
+      # attributable to the exact ae-a8n commit it was checked against.
+      - name: Record which ae-a8n commit this run validated against
+        working-directory: ae-a8n
+        run: |
+          echo "ae-a8n commit: $(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+          echo "ae-a8n subject: $(git log -1 --format=%s)" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Install toolchain
         uses: jdx/mise-action@v2

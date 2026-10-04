@@ -70,5 +70,11 @@ nothing.
 
 `mise` is the project-local toolchain frontend; `mise run check` is the local gate.
 `ae-a8n` is consumed as a `file:../ae-a8n` dependency until it is published, so
-`npm run build` in `../ae-a8n` is a prerequisite for building here. That is a
-provisional arrangement, not a design.
+`npm run build` in `../ae-a8n` is a prerequisite for building here, and CI checks
+out `ae-a8n` as a sibling with a read-only token.
+
+That is a **provisional arrangement, not a design.** Reaching into another
+repository's source during CI is weaker than the package boundary this project
+claims to have, and the token exists only to hide that. See
+[`docs/dependency-on-ae-a8n.md`](./docs/dependency-on-ae-a8n.md) for the setup and
+for the steps to remove it. Do not add a second such dependency.
