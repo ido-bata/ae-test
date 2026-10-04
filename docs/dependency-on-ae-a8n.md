@@ -59,6 +59,32 @@ Either way the run records the resolved commit SHA in the job summary, so a
 green build is always attributable to the exact `ae-a8n` commit it validated
 against.
 
+## A local failure mode this causes
+
+Observed while reviewing, and worth knowing before it costs someone an hour:
+
+```text
+src/fixture.ts(13,29): error TS2305:
+  Module '"@ido-bata/ae-a8n"' has no exported member 'HostTransport'.
+```
+
+The error names `ae-test` files, but the cause is usually a **sibling checkout on
+the wrong `ae-a8n` branch**. `file:../ae-a8n` resolves to whatever `dist/` that
+checkout currently holds, and `dist/` is only refreshed by `npm run build` over
+there. Switching `ae-a8n` to a branch without the public API makes every
+`ae-test` type reference fail at once, pointing away from the real cause.
+
+Before investigating anything in `ae-test`, check:
+
+```bash
+git -C ../ae-a8n branch --show-current
+npm --prefix ../ae-a8n run build
+```
+
+This is an argument for ending the arrangement, not for it. A registry version
+is immutable and named, so it cannot be silently changed by an unrelated branch
+switch on a sibling checkout.
+
 ## The end state
 
 When `ae-a8n` is published:
