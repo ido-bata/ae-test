@@ -47,36 +47,52 @@ repository**, and the workflow fails with a named reason when one is missing.
 ### 1. A Machine Identity configured for OIDC auth
 
 Infisical supports OIDC auth for machine identities: a JWT-based method where the
-identity declares which `iss`, `sub`, and `aud` it accepts, plus any additional
-claims it requires. Configure it so only this repository's workflow can use it:
+identity declares which `iss`, `sub`, `aud` it accepts, plus any additional
+claims it requires. Configure it so only this repository's `ci` workflow can use
+it.
+
+Concrete values, from `ido-bata/ae-test/.github/workflows/ci.yml`:
 
 | Field | Value |
 | --- | --- |
-| Auth method | OIDC |
-| OIDC Discovery URL | GitHub's provider metadata endpoint (see below) |
-| Issuer | the `iss` GitHub issues |
-| Subject | a glob matching this repository's workflow, e.g. `repo:ido-bata/ae-test:*` |
-| Audiences | the audience you set in `INFISICAL_OIDC_AUDIENCE` |
-| Additional claims | `repository_owner: ido-bata` and `repository: ido-bata/ae-test` |
+| OIDC Discovery URL | `https://token.actions.githubusercontent.com/.well-known/openid-configuration` |
+| Issuer | `https://token.actions.githubusercontent.com` |
+| Subject | `repo:ido-bata/ae-test:*` |
+| Audiences | `ae-test-infisical` — must equal `INFISICAL_OIDC_AUDIENCE` exactly |
+| Additional claims | `repository_owner: ido-bata` |
+| | `repository: ido-bata/ae-test` |
+| | `workflow_ref: ido-bata/ae-test/.github/workflows/ci.yml@*` |
 
-GitHub's OIDC provider is documented at
-`https://docs.github.com/en/actions/security-for-github-actions/security-hardening-your-deployments/about-security-hardening-with-openid-connect`,
-with its metadata at
-`https://token.actions.githubusercontent.com/.well-known/openid-configuration`.
+Infisical's `subject`, `audiences`, and `claims` fields all support glob
+patterns, so the `@*` above is a real wildcard rather than a literal.
+
+**Use `workflow_ref`, not `job_workflow_ref`.** GitHub's documentation is
+explicit that `job_workflow_ref` and `job_workflow_sha` are *"only present for
+reusable workflows"* and *"do not appear in normal (non-reusable) workflow
+tokens"*. This workflow is a normal one, so that claim would be absent from
+every token, the additional-claim check would fail, and **every run would fail**
+with a missing-claim error rather than anything diagnosable. `workflow_ref` is
+the claim that identifies the workflow file.
+
+The `@*` wildcard is required, not optional: on a `pull_request` event the ref
+is the pull request's merge ref, not `refs/heads/main`. An exact value would
+pass on pushes to `main` and fail on every pull request.
 
 Two things to be precise about:
 
-- **`sub` is the whole narrowing mechanism by default.** Without customising the
-  token, GitHub sets `sub` to `repo:OWNER/REPO:ref:refs/heads/BRANCH`, so a
-  glob of `repo:ido-bata/ae-test:*` is what restricts this to workflows in this
-  repository. Additional claim checks (`repository`, `repository_owner`) are
-  belt-and-braces, not the primary control.
+- **`sub` is the primary narrowing control.** Without customising the token,
+  GitHub sets `sub` to `repo:OWNER/REPO:ref:refs/heads/BRANCH`, so a glob of
+  `repo:ido-bata/ae-test:*` restricts this to workflows in this repository. The
+  additional claims are belt-and-braces; `workflow_ref` is what narrows it to
+  *this one workflow file* rather than any workflow in the repository.
 - **The audience is chosen by us**, via `INFISICAL_OIDC_AUDIENCE`. Naming it
   explicitly is what stops the JWT being replayable by another relying party
   asking for a default-audience token.
 
 Least privilege: this identity should have read access to **one project, one
-environment, one path** — nothing else in the Infisical org.
+CI environment, one dedicated path** — nothing else in the Infisical org. A
+path such as `/ci/ae-test/dependencies` keeps the token clearly separate from
+anything else stored for this repository.
 
 ### 2. The secret itself
 
@@ -88,7 +104,15 @@ A fine-grained GitHub personal access token, deliberately narrow:
 - An expiry, with a reminder in the calendar
 
 Stored in Infisical as `AE_A8N_TOKEN` at the path referenced by
-`INFISICAL_SECRET_PATH`.
+`INFISICAL_SECRET_PATH`, e.g.
+
+```text
+/ci/ae-test/dependencies
+  AE_A8N_TOKEN=<the fine-grained PAT>
+```
+
+Name it on the GitHub side so revoking it later is obvious:
+`ae-test-ci-read-ae-a8n`.
 
 ### 3. Repository variables on this repository
 
@@ -102,8 +126,8 @@ them grants access on its own.
 | `INFISICAL_IDENTITY_ID` | the machine identity's id |
 | `INFISICAL_PROJECT_ID` | the project holding the secret |
 | `INFISICAL_ENVIRONMENT` | `dev` |
-| `INFISICAL_SECRET_PATH` | `/ae-test` |
-| `INFISICAL_OIDC_AUDIENCE` | e.g. `infisical://ae-test` |
+| `INFISICAL_SECRET_PATH` | `/ci/ae-test/dependencies` |
+| `INFISICAL_OIDC_AUDIENCE` | `ae-test-infisical` |
 | `AE_A8N_REF` | *optional* — a branch, tag, or SHA to pin |
 
 By default CI follows `ae-a8n`'s `release-0-1-0`, so its fixes reach here
