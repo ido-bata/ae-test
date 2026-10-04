@@ -1,0 +1,67 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main, "release-*"]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      # ae-a8n is consumed as a file: dependency until it is published, so it
+      # has to be built before this package can typecheck or test.
+      - uses: actions/checkout@v5
+        with:
+          repository: ido-bata/ae-a8n
+          path: ae-a8n
+
+      - name: Install toolchain
+        uses: jdx/mise-action@v2
+        with:
+          version: 2026.9.12
+          install: true
+
+      - name: Build ae-a8n
+        working-directory: ae-a8n
+        run: |
+          mise exec -- npm ci
+          mise exec -- npm run build
+
+      - name: Install dependencies
+        run: mise exec -- npm install
+
+      - name: Typecheck
+        run: mise exec -- npm run typecheck
+
+      - name: Lint
+        run: mise exec -- npm run lint
+
+      - name: Test
+        run: mise exec -- npm run test
+
+      - name: Build
+        run: mise exec -- npm run build
+
+      # Proves the CLI can run a suite unattended against the fake host: launch,
+      # operate, render, assert, collect, tear down, with no human input.
+      - name: Smoke the CLI
+        run: |
+          mise exec -- npm run ae-test -- \
+            specs/plugin-render.spec.ts \
+            --results-dir .ae-test-results \
+            --projects-dir fixtures \
+            --fake-host \
+            --update-snapshots
+          mise exec -- npm run ae-test -- \
+            specs/plugin-render.spec.ts \
+            --results-dir .ae-test-results \
+            --projects-dir fixtures \
+            --fake-host
