@@ -51,6 +51,9 @@ jobs:
             fi
           done
           if [ ${#missing[@]} -gt 0 ]; then
+            # Not a test result: the suite never ran. It stays red on purpose
+            # rather than being skipped — see "Decision" in the doc.
+            echo "::error::BLOCKED — the ae-a8n dependency is unavailable, so no test ran."
             echo "::error::Missing repository variable(s): ${missing[*]}"
             echo "::error::These are non-secret pointers, set under Settings → Secrets and variables → Actions → Variables."
             echo "::error::See docs/dependency-on-ae-a8n.md for the full setup, which starts with the Machine Identity that must already exist in Infisical."
