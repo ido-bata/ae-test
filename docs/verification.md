@@ -10,8 +10,9 @@ nothing about the other.
 
 - `npm ci` with `@ido-bata/ae-a8n@0.1.0-alpha.0` from registry.npmjs.org,
   integrity checked against `package-lock.json`, recorded in the job summary;
-- build, typecheck, lint, 34 tests (runner, fixtures, teardown, snapshots,
-  reports, the dependency pin, the version constant);
+- build, typecheck, lint, 36 tests (runner, fixtures, teardown, snapshots,
+  reports, the dependency pin, the version constant, the README examples
+  type-checked against `dist`);
 - the CLI against `specs/plugin-render.spec.ts` with `--fake-host`, recording
   then comparing snapshots;
 - `scripts/check-packed-package.js`: the packed tarball installed into an

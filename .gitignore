@@ -5,3 +5,6 @@ coverage/
 
 # ae-test run output: artifacts, traces, reports, snapshot updates
 .ae-test-results/
+
+# test/readme.test.ts scratch, removed after each run
+.readme-examples-*/

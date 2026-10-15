@@ -10,7 +10,7 @@ and the renders behind.
 // specs/blur.spec.mjs
 import { test } from "@ido-bata/ae-test";
 
-test("Gaussian Blur changes the pixels", async ({ ae, fixture, expect, expectFrame }) => {
+test("Gaussian Blur changes the pixels", async ({ ae, fixture, expectFrame }) => {
   const project = await ae.openProject(fixture.project("fixture.aep"));
   const comp = await project.comp("Main");
   const effect = await (await comp.layer("Solid 1")).effects.apply("ADBE Gaussian Blur 2");
@@ -38,7 +38,7 @@ Two different kinds of evidence. They are not interchangeable.
 
 | | What it shows | Where |
 | --- | --- | --- |
-| **Fake host** (automated) | The runner, fixtures, assertions, snapshots, reports, CLI exit codes and teardown rules, against an in-process model of After Effects. No After Effects involved. | CI on every pull request: 34 tests, the CLI smoke, and `scripts/check-packed-package.js` (the packed tarball installed into an empty project, run through the installed `ae-test`) |
+| **Fake host** (automated) | The runner, fixtures, assertions, snapshots, reports, CLI exit codes and teardown rules, against an in-process model of After Effects. No After Effects involved. | CI on every pull request: the unit tests (including a type check of this README's examples against the built types), the CLI smoke, and `scripts/check-packed-package.js` (the packed tarball installed into an empty project, run through the installed `ae-test`) |
 | **macOS, real After Effects** (manual) | The same CLI, without `--fake-host`, driving After Effects 2026 (26.5x89, Japanese UI) on macOS 27 / arm64: a real `.aep`, a built-in effect by match name, parameter write/read, a PNG render, snapshot comparison, teardown | Run by hand on one Mac; not part of CI. Latest: this release's code with `@ido-bata/ae-a8n@0.1.0-alpha.0` from npm, 4/4 passed. History in [docs/verification.md](docs/verification.md) |
 | **Windows** | Nothing. ae-test does not run there today: ae-a8n cannot establish that it started After Effects on Windows, and ae-test refuses any session it does not own | — |
 
