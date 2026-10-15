@@ -178,6 +178,26 @@ This is an argument for ending the arrangement, not for it. A registry version
 is immutable and named, so it cannot be silently changed by an unrelated branch
 switch on a sibling checkout.
 
+## Decision (2026-10-15)
+
+The Infisical path above is **not being built**. `@ido-bata/ae-a8n` is being
+prepared for npm as `0.1.0-alpha.0` under the `next` dist-tag
+(ido-bata/ae-a8n#12), and the cross-repository token would exist only until
+then.
+
+- **Until the alpha is on npm:** CI stays red at *Check the Infisical
+  pointers are configured*, labelled BLOCKED. It is not skipped and not
+  reported as success: no test ran. Tests run locally against a sibling
+  `ae-a8n` checkout (`file:../ae-a8n`), and real-host checks run on the Mac.
+- **When it is on npm:** follow the end state below, pinning the exact
+  version — `"@ido-bata/ae-a8n": "0.1.0-alpha.0"`, no range, because it is a
+  pre-release and `^` would not express the intent. Bump deliberately.
+- Steps 4 and 5 below are then no-ops if the token and variables were never
+  created.
+
+Installing a public npm package needs no credentials, so the resulting job
+needs neither `id-token: write` nor any secret.
+
 ## The end state
 
 When `ae-a8n` is published:
