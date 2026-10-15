@@ -30,7 +30,7 @@
     "ae-test": "npm run build && node dist/cli.js"
   },
   "dependencies": {
-    "@ido-bata/ae-a8n": "file:../ae-a8n"
+    "@ido-bata/ae-a8n": "0.1.0-alpha.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.0",

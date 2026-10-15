@@ -69,26 +69,22 @@ nothing.
 ## Toolchain
 
 `mise` is the project-local toolchain frontend; `mise run check` is the local gate.
-`ae-a8n` is consumed as a `file:../ae-a8n` dependency until it is published, so
-`npm run build` in `../ae-a8n` is a prerequisite for building here, and CI checks
-out the private `ae-a8n` repository as a sibling.
+`ae-a8n` is consumed from npm as one exact version
+(`"@ido-bata/ae-a8n": "0.1.0-alpha.0"`), its tarball pinned by integrity in
+`package-lock.json`, and CI installs it with `npm ci`. No range, no `file:`
+link, no git URL; `test/dependency.test.ts` enforces it. Bump deliberately.
+See [`docs/dependency-on-ae-a8n.md`](./docs/dependency-on-ae-a8n.md).
 
-That is a **provisional arrangement, not a design.** Reaching into another
-repository's source during CI is weaker than the package boundary this project
-claims to have, and the machine identity that papers over it exists only for that
-reason. See [`docs/dependency-on-ae-a8n.md`](./docs/dependency-on-ae-a8n.md) for
-the setup and for the steps to remove all of it. Do not add a second such
-dependency.
+To try an unpublished `ae-a8n` locally, `npm install ../ae-a8n` in a scratch
+branch and do not commit the resulting `package.json` / lockfile.
 
 ## Secrets
 
 **Infisical is the SoT for application and CI secrets. Not GitHub repository
 secrets, and not hardcoded values.**
 
-CI authenticates with the GitHub OIDC token and exchanges it for a short-lived
-Infisical access token, so this workflow holds no secret. Non-secret pointers
-(domain, machine identity id, project id, environment, path, audience) are
-GitHub **Actions variables**; only values go in Infisical.
+CI needs no secret today: the only dependency that once needed one (a private
+`ae-a8n` checkout) now comes from the public registry.
 
 Do not add a `secrets.*` reference to a workflow here. If a step needs a secret,
 it gets it from Infisical at runtime, and the pointer to where it lives is a
