@@ -1,0 +1,66 @@
+{
+  "name": "@ido-bata/ae-test",
+  "version": "0.1.0-alpha.0",
+  "description": "Playwright-like tests for After Effects plugins and scripts, on top of @ido-bata/ae-a8n. macOS-verified alpha.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ido-bata/ae-test.git"
+  },
+  "homepage": "https://github.com/ido-bata/ae-test#readme",
+  "bugs": {
+    "url": "https://github.com/ido-bata/ae-test/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "tag": "next",
+    "provenance": false
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "ae-test": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src test --no-error-on-unmatched-pattern",
+    "test": "npm run build && vitest run",
+    "check": "npm run typecheck && npm run lint && npm run test",
+    "ae-test": "npm run build && node dist/cli.js",
+    "check:package": "node scripts/check-packed-package.js"
+  },
+  "dependencies": {
+    "@ido-bata/ae-a8n": "0.1.0-alpha.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.0",
+    "@types/node": "^24.10.1",
+    "eslint": "^9.39.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.4",
+    "vitest": "^3.2.4"
+  },
+  "keywords": [
+    "after-effects",
+    "adobe",
+    "testing",
+    "test-runner",
+    "extendscript",
+    "automation"
+  ]
+}

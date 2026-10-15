@@ -1,0 +1,82 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main, "release-*"]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    # @ido-bata/ae-a8n comes from the public npm registry, pinned to an exact
+    # version with its integrity in package-lock.json: no token, no OIDC, no
+    # second repository. See docs/dependency-on-ae-a8n.md.
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Install toolchain
+        uses: jdx/mise-action@v2
+        with:
+          version: 2026.9.12
+          install: true
+
+      # `npm ci`, not `npm install`: the lockfile is the record of exactly
+      # which ae-a8n tarball (sha512) this run validates against.
+      - name: Install dependencies
+        run: mise exec -- npm ci
+
+      - name: Record which ae-a8n this run validated against
+        run: |
+          mise exec -- node -e '
+            const { readFileSync } = require("node:fs");
+            const lock = JSON.parse(readFileSync("package-lock.json", "utf-8")).packages["node_modules/@ido-bata/ae-a8n"];
+            const installed = JSON.parse(readFileSync("node_modules/@ido-bata/ae-a8n/package.json", "utf-8")).version;
+            if (installed !== lock.version) { console.error(`::error::installed ${installed}, lockfile ${lock.version}`); process.exit(1); }
+            console.log(`ae-a8n ${lock.version} ${lock.resolved} ${lock.integrity}`);
+          ' | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # Tests and specs import ../dist, so build before type-checking them.
+      - name: Build
+        run: mise exec -- npm run build
+
+      - name: Typecheck
+        run: mise exec -- npm run typecheck
+
+      - name: Lint
+        run: mise exec -- npm run lint
+
+      - name: Test
+        run: mise exec -- npm run test
+
+      # Proves the CLI can run a suite unattended against the fake host: launch,
+      # operate, render, assert, collect, tear down, with no human input.
+      - name: Smoke the CLI
+        run: |
+          mise exec -- npm run ae-test -- \
+            specs/plugin-render.spec.ts \
+            --results-dir .ae-test-results \
+            --projects-dir fixtures \
+            --fake-host \
+            --update-snapshots
+          mise exec -- npm run ae-test -- \
+            specs/plugin-render.spec.ts \
+            --results-dir .ae-test-results \
+            --projects-dir fixtures \
+            --fake-host
+
+      # The repository's specs import ../dist; this installs the packed
+      # tarball into an empty project and runs specs that import
+      # @ido-bata/ae-test by name through the installed binary.
+      - name: Check the package as a consumer gets it
+        run: mise exec -- node scripts/check-packed-package.js
