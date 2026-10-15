@@ -74,3 +74,9 @@ jobs:
             --results-dir .ae-test-results \
             --projects-dir fixtures \
             --fake-host
+
+      # The repository's specs import ../dist; this installs the packed
+      # tarball into an empty project and runs specs that import
+      # @ido-bata/ae-test by name through the installed binary.
+      - name: Check the package as a consumer gets it
+        run: mise exec -- node scripts/check-packed-package.js
