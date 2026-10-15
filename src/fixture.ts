@@ -12,7 +12,18 @@ import { basename, dirname, join, resolve } from "node:path";
 
 import { AfterEffects, type HostTransport } from "@ido-bata/ae-a8n";
 
-import type { Artifact, Fixture, TestInfo } from "./types.js";
+import type { Artifact, CleanupOutcome, Fixture, TestInfo } from "./types.js";
+
+/** After Effects was running before this run started it, or its owner is unclear. */
+export class HostNotOwnedError extends Error {
+  constructor(kind: string, evidence: string) {
+    super(
+      `After Effects is ${kind === "attached" ? "already running" : "of unknown ownership"} (${evidence}); ` +
+        "ae-test only runs against an After Effects it starts. Quit it and run again.",
+    );
+    this.name = "HostNotOwnedError";
+  }
+}
 
 export type FixtureOptions = {
   /** Root for per-test output. Each test gets a subdirectory. */
@@ -53,10 +64,16 @@ export class TestFixture {
     };
   }
 
-  /** Launches the session, or returns the one already open for this test. */
+  /**
+   * Launches the session, or returns the one already open for this test.
+   *
+   * Refuses to run against an After Effects this run did not start: a test
+   * opens projects and edits them, and an already-running AE may be someone's
+   * working session. The session is ended without touching that AE.
+   */
   async session(): Promise<AfterEffects> {
     if (this.#session === undefined) {
-      this.#session = await AfterEffects.launch({
+      const session = await AfterEffects.launch({
         sessionRoot: this.#info.outputDir,
         ...(this.#options.transport === undefined
           ? {}
@@ -65,26 +82,47 @@ export class TestFixture {
           ? {}
           : { timeoutMs: this.#options.timeoutMs }),
       });
+      const ownership = session.ownership();
+      if (ownership.kind !== "owned") {
+        await session.close();
+        throw new HostNotOwnedError(ownership.kind, ownership.evidence);
+      }
+      this.#session = session;
     }
     return this.#session;
   }
 
   /**
-   * Always closes the session, even after a failure. Errors are swallowed
-   * here on purpose: teardown must not mask the assertion that already failed.
-   * The real cause is captured by the runner.
+   * Always closes the session, even after a failure, and says how that went.
+   *
+   * The edits being discarded are this test's own, in an AE this run started
+   * (`session()` refuses anything else), so discarding them is explicit here.
+   * A failure is returned rather than thrown: it must not replace the reason a
+   * test failed, and it must not be lost when the test passed either — an AE
+   * that did not quit is the next test's problem.
    */
-  async teardown(): Promise<void> {
+  async teardown(): Promise<CleanupOutcome | undefined> {
     const session = this.#session;
     this.#session = undefined;
     if (session === undefined) {
-      return;
+      return undefined;
     }
     try {
-      await session.close();
-    } catch {
-      // Reported through the trace file rather than the test result: a
-      // teardown failure is real, but it is not the reason the test failed.
+      const result = await session.close({ unsavedChanges: "discard" });
+      if (!result.quit) {
+        return {
+          status: "failed",
+          name: "HostLeftRunning",
+          message: `After Effects was not quit: ${result.reason ?? "no reason given"}`,
+        };
+      }
+      return { status: "ok", quit: true };
+    } catch (error) {
+      return {
+        status: "failed",
+        name: error instanceof Error ? error.name : "Error",
+        message: error instanceof Error ? error.message : String(error),
+      };
     }
   }
 

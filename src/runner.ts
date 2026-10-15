@@ -20,6 +20,7 @@ import { DEFAULT_TIMEOUT_MS, clearRegistry, setDeclaringFile } from "./registry.
 import { SnapshotStore } from "./snapshot.js";
 import type {
   Artifact,
+  CleanupOutcome,
   RunSummary,
   TestContext,
   TestDeclaration,
@@ -96,7 +97,27 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   );
 
   const results: TestResult[] = [];
+  // Set once a test leaves After Effects in a state nobody can vouch for: a
+  // teardown that failed, a launch that failed, an AE this run does not own.
+  // Every later test is then reported as blocked instead of being run against
+  // that host — a stuck AE would fail it for reasons that are not its own, or
+  // worse, let it pass against the wrong state.
+  let hostUnknown: string | undefined;
   for (const declaration of declared) {
+    if (hostUnknown !== undefined && !declaration.skip) {
+      const blocked: TestResult = {
+        id: declaration.id,
+        title: declaration.title,
+        file: declaration.file,
+        status: "blocked",
+        durationMs: 0,
+        artifacts: [],
+        blockedReason: hostUnknown,
+      };
+      results.push(blocked);
+      options.onResult?.(blocked);
+      continue;
+    }
     const result = await runOne(declaration, {
       resultsDir,
       snapshotsDir,
@@ -107,6 +128,11 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     });
     results.push(result);
     options.onResult?.(result);
+    if (result.cleanup?.status === "failed") {
+      hostUnknown = `"${result.title}" did not clean up: ${result.cleanup.name}: ${result.cleanup.message}`;
+    } else if (result.failure?.phase === "launch") {
+      hostUnknown = `"${result.title}" could not start a session: ${result.failure.name}: ${result.failure.message}`;
+    }
   }
 
   const reportPath = join(resultsDir, "report.json");
@@ -172,9 +198,12 @@ async function runOne(
   let status: TestStatus = "passed";
   let failure: TestFailure | undefined;
   let artifacts: Artifact[] = [];
+  let cleanup: CleanupOutcome | undefined;
+  let launched = false;
 
   try {
     session = await fixture.session();
+    launched = true;
     const context: TestContext = {
       ae: session,
       fixture: fixture.fixture,
@@ -192,10 +221,25 @@ async function runOne(
     await body;
   } catch (error) {
     status = error instanceof TestTimeoutError ? "timed-out" : "failed";
-    failure = describeFailure(error, session);
+    failure = { ...describeFailure(error, session), phase: launched ? "body" : "launch" };
   } finally {
     artifacts = fixture.collectArtifacts(session);
-    await fixture.teardown();
+    cleanup = await fixture.teardown();
+  }
+
+  // A body that passed does not make the test pass if the session could not
+  // be torn down: the result has to cover everything the test did.
+  if (status === "passed" && cleanup?.status === "failed") {
+    status = "failed";
+    failure = {
+      name: "CleanupError",
+      message: `the test body passed, but teardown failed: ${cleanup.name}: ${cleanup.message}`,
+      lastOperations:
+        session === undefined
+          ? []
+          : session.traceEvents.slice(-5).map((event) => `${event.op} (${event.status})`),
+      phase: "cleanup",
+    };
   }
 
   return {
@@ -205,6 +249,7 @@ async function runOne(
     status,
     durationMs: Date.now() - began,
     ...(failure === undefined ? {} : { failure }),
+    ...(cleanup === undefined ? {} : { cleanup }),
     artifacts,
   };
 }
@@ -264,6 +309,7 @@ export function countByStatus(results: readonly TestResult[]): Record<TestStatus
     failed: 0,
     "timed-out": 0,
     skipped: 0,
+    blocked: 0,
   };
   for (const result of results) {
     counts[result.status] += 1;
@@ -271,6 +317,9 @@ export function countByStatus(results: readonly TestResult[]): Record<TestStatus
   return counts;
 }
 
+/** Anything that is not a pass or a deliberate skip makes the run red. */
 export function hasFailures(results: readonly TestResult[]): boolean {
-  return results.some((result) => result.status === "failed" || result.status === "timed-out");
+  return results.some(
+    (result) => result.status === "failed" || result.status === "timed-out" || result.status === "blocked",
+  );
 }

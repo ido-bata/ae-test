@@ -14,6 +14,7 @@ const SYMBOL: Record<TestResult["status"], string> = {
   failed: "✗",
   "timed-out": "⏱",
   skipped: "-",
+  blocked: "⊘",
 };
 
 export function formatResultLine(result: TestResult): string {
@@ -22,6 +23,9 @@ export function formatResultLine(result: TestResult): string {
 }
 
 export function formatFailure(result: TestResult): string {
+  if (result.status === "blocked") {
+    return ["", `  ${result.title}`, `    not run: ${result.blockedReason ?? "host state unknown"}`].join("\n");
+  }
   if (result.failure === undefined) {
     return "";
   }
@@ -30,6 +34,10 @@ export function formatFailure(result: TestResult): string {
     `  ${result.title}`,
     `    ${result.failure.name}: ${result.failure.message}`,
   ];
+  if (result.cleanup?.status === "failed" && result.failure.phase !== "cleanup") {
+    // The body's failure is the reason; the teardown failure still happened.
+    lines.push(`    teardown also failed: ${result.cleanup.name}: ${result.cleanup.message}`);
+  }
   if (result.failure.lastOperations.length > 0) {
     lines.push("    last operations:");
     for (const op of result.failure.lastOperations) {
@@ -56,6 +64,7 @@ export function formatSummary(summary: RunSummary): string {
     `${counts.failed} failed`,
     `${counts["timed-out"]} timed out`,
     `${counts.skipped} skipped`,
+    `${counts.blocked} blocked`,
   ];
   return [
     "",
