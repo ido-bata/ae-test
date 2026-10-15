@@ -28,9 +28,8 @@ test("Gaussian Blur changes the pixels", async ({ ae, fixture, expectFrame }) =>
 npx ae-test specs/blur.spec.mjs
 ```
 
-> **Alpha, not published yet.** `0.1.0-alpha.0` is a release candidate in
-> this repository; it is not on npm. It depends on
-> `@ido-bata/ae-a8n@0.1.0-alpha.0`, which is.
+> **Alpha.** Published under the `next` dist-tag. The API may change between
+> alphas, and only macOS has been run against a real After Effects (below).
 
 ## What has been verified, and how
 
@@ -47,15 +46,11 @@ behaved; only a real-host run says that.
 
 ## Install
 
-Once published:
-
 ```bash
 npm install --save-dev @ido-bata/ae-test@next
 ```
 
-`@ido-bata/ae-a8n` comes with it (pinned to `0.1.0-alpha.0`). Until then,
-from a clone of this repository: `npm ci && npm run build`, and run
-`node dist/cli.js`.
+`@ido-bata/ae-a8n` comes with it, pinned to exactly `0.1.0-alpha.0`.
 
 Requirements: Node 22 or later (24 to write specs in TypeScript, see below).
 For a real host, additionally: macOS, After Effects installed in the default

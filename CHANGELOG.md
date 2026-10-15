@@ -2,7 +2,7 @@
 
 ## 0.1.0-alpha.0
 
-First release candidate. **Not published to npm yet.** Depends on
+First alpha, published under the `next` dist-tag. Depends on
 `@ido-bata/ae-a8n` `0.1.0-alpha.0` exactly.
 
 ### Added
