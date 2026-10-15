@@ -1,0 +1,7 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# ae-test run output: artifacts, traces, reports, snapshot updates
+.ae-test-results/

@@ -1,0 +1,212 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main, "release-*"]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    # `id-token: write` exists solely so the step below can ask the GitHub
+    # Actions runtime for an OIDC token, which is then exchanged with Infisical
+    # for a short-lived access token. Nothing else in this job uses it, and no
+    # GitHub repository secret holds a long-lived credential.
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v5
+
+      # ido-bata/ae-a8n is a *private* repository, and the default GITHUB_TOKEN
+      # cannot read another private repository. Until ae-a8n is published this
+      # job needs a fine-grained token scoped to it — and that token lives in
+      # Infisical, the project-wide SoT for secrets, not in GitHub.
+      #
+      # It is reached with the GitHub OIDC token rather than a stored
+      # credential, so this workflow contains no secret at all.
+      # See docs/dependency-on-ae-a8n.md.
+      - name: Check the Infisical pointers are configured
+        env:
+          INFISICAL_DOMAIN: ${{ vars.INFISICAL_DOMAIN }}
+          INFISICAL_IDENTITY_ID: ${{ vars.INFISICAL_IDENTITY_ID }}
+          INFISICAL_PROJECT_ID: ${{ vars.INFISICAL_PROJECT_ID }}
+          INFISICAL_ENVIRONMENT: ${{ vars.INFISICAL_ENVIRONMENT }}
+          INFISICAL_SECRET_PATH: ${{ vars.INFISICAL_SECRET_PATH }}
+          INFISICAL_OIDC_AUDIENCE: ${{ vars.INFISICAL_OIDC_AUDIENCE }}
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in INFISICAL_DOMAIN INFISICAL_IDENTITY_ID INFISICAL_PROJECT_ID \
+                      INFISICAL_ENVIRONMENT INFISICAL_SECRET_PATH INFISICAL_OIDC_AUDIENCE; do
+            if [ -z "${!name:-}" ]; then
+              missing+=("$name")
+            fi
+          done
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Missing repository variable(s): ${missing[*]}"
+            echo "::error::These are non-secret pointers, set under Settings → Secrets and variables → Actions → Variables."
+            echo "::error::See docs/dependency-on-ae-a8n.md for the full setup, which starts with the Machine Identity that must already exist in Infisical."
+            exit 1
+          fi
+
+      - name: Authenticate to Infisical with the GitHub OIDC token
+        id: infisical
+        env:
+          # Non-secret by design: their shape is reviewable in this file, and
+          # none of them grants access on its own.
+          INFISICAL_DOMAIN: ${{ vars.INFISICAL_DOMAIN }}
+          INFISICAL_IDENTITY_ID: ${{ vars.INFISICAL_IDENTITY_ID }}
+          INFISICAL_PROJECT_ID: ${{ vars.INFISICAL_PROJECT_ID }}
+          INFISICAL_ENVIRONMENT: ${{ vars.INFISICAL_ENVIRONMENT }}
+          INFISICAL_SECRET_PATH: ${{ vars.INFISICAL_SECRET_PATH }}
+          INFISICAL_OIDC_AUDIENCE: ${{ vars.INFISICAL_OIDC_AUDIENCE }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ] || [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
+            echo "::error::The Actions runtime did not offer an OIDC token endpoint."
+            echo "::error::That means the job is missing \`permissions: id-token: write\`."
+            exit 1
+          fi
+
+          # 1. Ask the Actions runtime for an OIDC token. `audience` is explicit
+          #    so the JWT is only ever accepted by Infisical, and not by any
+          #    other relying party that asks for a default one.
+          oidc_response=$(curl --fail --silent --show-error --location \
+            --header "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${INFISICAL_OIDC_AUDIENCE}")
+          jwt=$(printf '%s' "$oidc_response" | jq -r '.value // empty')
+          if [ -z "$jwt" ]; then
+            echo "::error::The Actions runtime returned no OIDC token for audience '${INFISICAL_OIDC_AUDIENCE}'."
+            exit 1
+          fi
+
+          # 2. Exchange it for a short-lived Infisical access token. The
+          #    response is captured in a variable and never written to disk, so
+          #    the token cannot be read by a later step or left behind in a
+          #    temporary file.
+          login_response=$(
+            curl --silent --show-error --fail-with-body \
+              --request POST \
+              --header 'Content-Type: application/x-www-form-urlencoded' \
+              --data-urlencode "identityId=${INFISICAL_IDENTITY_ID}" \
+              --data-urlencode "jwt=${jwt}" \
+              "${INFISICAL_DOMAIN}/api/v1/auth/oidc-auth/login" 2>&1
+          ) || {
+            echo "::error::Infisical rejected the OIDC token."
+            echo "::error::Check that Machine Identity '${INFISICAL_IDENTITY_ID}' exists, is configured for OIDC auth, and accepts audience '${INFISICAL_OIDC_AUDIENCE}' and a subject matching this repository."
+            # The response body carries the reason and contains no secret value.
+            printf '%s\n' "$login_response" | sed 's/^/::error::infisical: /' || true
+            exit 1
+          }
+          infisical_access_token=$(printf '%s' "$login_response" | jq -r '.accessToken // empty')
+          if [ -z "$infisical_access_token" ]; then
+            echo "::error::Infisical returned no access token for identity ${INFISICAL_IDENTITY_ID}."
+            printf '%s\n' "$login_response" | jq -r '.message // empty' | sed 's/^/::error::infisical: /' || true
+            exit 1
+          fi
+          unset login_response
+
+          # 3. Read exactly one secret, from the configured path. CLI-first,
+          #    per the project's secret-management practice.
+          #
+          #    `|| true` matters: with `set -e` and `pipefail` a failing export
+          #    would otherwise abort the step before the branch below could
+          #    report *why* it failed, and the log would show nothing useful.
+          ae_a8n_token=$(
+            infisical export \
+              --format dotenv \
+              --env "$INFISICAL_ENVIRONMENT" \
+              --projectId "$INFISICAL_PROJECT_ID" \
+              --path "$INFISICAL_SECRET_PATH" \
+              --token "$infisical_access_token" \
+              --domain "$INFISICAL_DOMAIN" \
+              2>/tmp/infisical-export.err \
+              | sed -n 's/^AE_A8N_TOKEN=//p' | head -n1 | tr -d '"'"'"'' \
+              || true
+          )
+          if [ -z "$ae_a8n_token" ]; then
+            echo "::error::AE_A8N_TOKEN was not found at ${INFISICAL_DOMAIN}, project ${INFISICAL_PROJECT_ID}, environment ${INFISICAL_ENVIRONMENT}, path ${INFISICAL_SECRET_PATH}."
+            sed 's/^/::error::infisical: /' /tmp/infisical-export.err || true
+            exit 1
+          fi
+
+          # 4. Mask before it can reach a log. Nothing above touches either
+          #    value, which is what makes masking here sufficient.
+          echo "::add-mask::${ae_a8n_token}"
+          echo "::add-mask::${infisical_access_token}"
+          unset infisical_access_token jwt
+
+          echo "token=${ae_a8n_token}" >> "$GITHUB_OUTPUT"
+          echo "Authenticated to Infisical as machine identity ${INFISICAL_IDENTITY_ID}; no secret values recorded." \
+            >> "$GITHUB_STEP_SUMMARY"
+
+      # The only step that uses the token.
+      - name: Check out ae-a8n
+        uses: actions/checkout@v5
+        with:
+          repository: ido-bata/ae-a8n
+          path: ae-a8n
+          # Branch by default so ae-a8n's fixes reach here without a manual
+          # bump. Override with the AE_A8N_REF variable to pin.
+          ref: ${{ vars.AE_A8N_REF || 'release-0-1-0' }}
+          token: ${{ steps.infisical.outputs.token }}
+
+      # Validation evidence has to be bound to an immutable identity, and
+      # "release-0-1-0" is not one.
+      - name: Record which ae-a8n commit this run validated against
+        working-directory: ae-a8n
+        run: |
+          echo "ae-a8n commit: $(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+          echo "ae-a8n subject: $(git log -1 --format=%s)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Install toolchain
+        uses: jdx/mise-action@v2
+        with:
+          version: 2026.9.12
+          install: true
+
+      - name: Build ae-a8n
+        working-directory: ae-a8n
+        run: |
+          mise exec -- npm ci
+          mise exec -- npm run build
+
+      - name: Install dependencies
+        run: mise exec -- npm install
+
+      - name: Typecheck
+        run: mise exec -- npm run typecheck
+
+      - name: Lint
+        run: mise exec -- npm run lint
+
+      - name: Test
+        run: mise exec -- npm run test
+
+      - name: Build
+        run: mise exec -- npm run build
+
+      # Proves the CLI can run a suite unattended against the fake host: launch,
+      # operate, render, assert, collect, tear down, with no human input.
+      - name: Smoke the CLI
+        run: |
+          mise exec -- npm run ae-test -- \
+            specs/plugin-render.spec.ts \
+            --results-dir .ae-test-results \
+            --projects-dir fixtures \
+            --fake-host \
+            --update-snapshots
+          mise exec -- npm run ae-test -- \
+            specs/plugin-render.spec.ts \
+            --results-dir .ae-test-results \
+            --projects-dir fixtures \
+            --fake-host
