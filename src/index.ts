@@ -2,14 +2,15 @@
  * `@ido-bata/ae-test` — Playwright-like automated testing for After Effects.
  *
  * ```ts
- * import { test, expect } from "@ido-bata/ae-test";
+ * import { test } from "@ido-bata/ae-test";
  *
- * test("plugin renders correctly", async ({ ae, expectFrame }) => {
- *   const project = await ae.openProject("fixtures/fixture.aep");
+ * test("plugin renders correctly", async ({ ae, fixture, expectFrame }) => {
+ *   const project = await ae.openProject(fixture.project("fixture.aep"));
  *   const comp = await project.comp("Main");
  *   const layer = await comp.layer("Solid 1");
- *   const effect = await layer.effects.apply("Example Plugin");
- *   await effect.parameter("Amount").set(50);
+ *   // Match names, not display names: display names are localised.
+ *   const effect = await layer.effects.apply("ADBE Gaussian Blur 2");
+ *   await effect.parameter("ADBE Gaussian Blur 2-0001").set(50);
  *
  *   const frame = await comp.renderFrame(0);
  *   await expectFrame(frame).toMatchSnapshot("main-frame-0");
@@ -60,4 +61,4 @@ export type {
   TestStatus,
 } from "./types.js";
 
-export const AE_TEST_VERSION = "0.0.0";
+export const AE_TEST_VERSION = "0.1.0-alpha.0";
