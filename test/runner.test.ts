@@ -205,6 +205,7 @@ test("fails", async () => { throw new Error("nope"); });
       failed: 1,
       "timed-out": 0,
       skipped: 0,
+      blocked: 0,
     });
     expect(hasFailures(summary.results)).toBe(true);
     expect(exitCodeFor(summary)).toBe(1);

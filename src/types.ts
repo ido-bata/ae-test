@@ -9,7 +9,17 @@ import type { AfterEffects, RenderedFrame, TraceEvent } from "@ido-bata/ae-a8n";
 
 import type { AsyncExpectation, Expectation, RenderedFrameExpectation } from "./expect.js";
 
-export type TestStatus = "passed" | "failed" | "timed-out" | "skipped";
+/**
+ * "blocked": the test was not run, because an earlier test left After
+ * Effects in a state nobody can vouch for. Not a pass, and not a failure of
+ * this test's own code.
+ */
+export type TestStatus = "passed" | "failed" | "timed-out" | "skipped" | "blocked";
+
+/** How the session was torn down, separately from how the test body went. */
+export type CleanupOutcome =
+  | { readonly status: "ok"; readonly quit: boolean }
+  | { readonly status: "failed"; readonly name: string; readonly message: string };
 
 export type Artifact = {
   readonly name: string;
@@ -69,6 +79,13 @@ export type TestDeclaration = {
   readonly skip: boolean;
 };
 
+export type TestResultExtras = {
+  /** Teardown outcome; absent when no session was opened. */
+  readonly cleanup?: CleanupOutcome;
+  /** Why a "blocked" test was not run. */
+  readonly blockedReason?: string;
+};
+
 export type TestFailure = {
   readonly name: string;
   readonly message: string;
@@ -76,6 +93,8 @@ export type TestFailure = {
   readonly stack?: string;
   /** Operations immediately before the failure, from the ae-a8n trace. */
   readonly lastOperations: readonly string[];
+  /** Where it failed: starting the session, the test body, or teardown. */
+  readonly phase?: "launch" | "body" | "cleanup";
 };
 
 export type TestResult = {
@@ -86,7 +105,7 @@ export type TestResult = {
   readonly durationMs: number;
   readonly failure?: TestFailure;
   readonly artifacts: readonly Artifact[];
-};
+} & TestResultExtras;
 
 export type RunSummary = {
   readonly results: readonly TestResult[];
