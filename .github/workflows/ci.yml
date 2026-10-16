@@ -120,4 +120,4 @@ jobs:
         run: npm run build
 
       - name: Release tooling tests
-        run: npx vitest run test/publish-gate.test.ts test/readme.test.ts test/stage-publish.test.ts
+        run: npx vitest run test/publish-gate.test.ts test/readme.test.ts test/stage-publish.test.ts test/github-rulesets.test.ts
