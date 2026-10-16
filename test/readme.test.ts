@@ -17,13 +17,25 @@ import { describe, expect, it } from "vitest";
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const readme = readFileSync(join(ROOT, "README.md"), "utf-8");
 
-const examples = [...readme.matchAll(/```js\n([\s\S]*?)```/g)]
-  .map((match) => match[1] ?? "")
-  .filter((code) => code.includes(`from "@ido-bata/ae-test"`) && !code.includes("…"));
+function completeExamples(markdown: string): string[] {
+  // As checked out: Git for Windows defaults to core.autocrlf=true, and the
+  // pattern is written with \n.
+  const lf = markdown.replace(/\r\n/g, "\n");
+  return [...lf.matchAll(/```js\n([\s\S]*?)```/g)]
+    .map((match) => match[1] ?? "")
+    .filter((code) => code.includes(`from "@ido-bata/ae-test"`) && !code.includes("…"));
+}
+
+const examples = completeExamples(readme);
 
 describe("README examples", () => {
   it("has at least one complete example", () => {
     expect(examples.length).toBeGreaterThan(0);
+  });
+
+  it("finds the same examples in a CRLF checkout", () => {
+    const lf = readme.replace(/\r\n/g, "\n");
+    expect(completeExamples(lf.replace(/\n/g, "\r\n"))).toEqual(completeExamples(lf));
   });
 
   it("type-check against the built package", () => {
