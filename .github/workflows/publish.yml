@@ -72,6 +72,8 @@ jobs:
           version: 2026.9.12
           install: true
 
+      # NPM_CLI_JS: the staging script runs exactly this npm as
+      # `node <npm-cli.js>`, without a shell, and checks its version again.
       - name: Pin the npm CLI
         run: |
           mise exec -- npm install -g "npm@$NPM_CLI_VERSION"
@@ -80,6 +82,12 @@ jobs:
             echo "::error::npm is $actual after installing $NPM_CLI_VERSION"
             exit 1
           fi
+          cli="$(mise exec -- npm root -g)/npm/bin/npm-cli.js"
+          if [ "$(mise exec -- node "$cli" --version)" != "$NPM_CLI_VERSION" ]; then
+            echo "::error::$cli is not npm $NPM_CLI_VERSION"
+            exit 1
+          fi
+          echo "NPM_CLI_JS=$cli" >> "$GITHUB_ENV"
 
       # The same checks as ci.yml, on the commit being released. Specs and
       # tests import ../dist, so build first.
@@ -163,6 +171,8 @@ jobs:
           version: 2026.9.12
           install: true
 
+      # NPM_CLI_JS: the staging script runs exactly this npm as
+      # `node <npm-cli.js>`, without a shell, and checks its version again.
       - name: Pin the npm CLI
         run: |
           mise exec -- npm install -g "npm@$NPM_CLI_VERSION"
@@ -171,6 +181,12 @@ jobs:
             echo "::error::npm is $actual after installing $NPM_CLI_VERSION"
             exit 1
           fi
+          cli="$(mise exec -- npm root -g)/npm/bin/npm-cli.js"
+          if [ "$(mise exec -- node "$cli" --version)" != "$NPM_CLI_VERSION" ]; then
+            echo "::error::$cli is not npm $NPM_CLI_VERSION"
+            exit 1
+          fi
+          echo "NPM_CLI_JS=$cli" >> "$GITHUB_ENV"
 
       - uses: actions/download-artifact@v4
         with:

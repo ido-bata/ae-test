@@ -83,9 +83,8 @@ jobs:
 
   # The release tooling's tests on native Windows, checked out as Git for
   # Windows does by default (core.autocrlf=true, so CRLF files): the publish
-  # gate (registry over HTTP, no shell) and the README examples. Same job as
-  # ido-bata/ae-a8n#31. test/stage-publish.test.ts drives the real npm CLI by
-  # design and is not part of it.
+  # gate (registry over HTTP, no shell), the README examples, and staging
+  # with the real npm CLI against a recording registry.
   release-tooling-windows:
     runs-on: windows-latest
     timeout-minutes: 15
@@ -121,4 +120,4 @@ jobs:
         run: npm run build
 
       - name: Release tooling tests
-        run: npx vitest run test/publish-gate.test.ts test/readme.test.ts
+        run: npx vitest run test/publish-gate.test.ts test/readme.test.ts test/stage-publish.test.ts
