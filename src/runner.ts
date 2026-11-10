@@ -46,6 +46,8 @@ export type RunOptions = {
   readonly grep?: string;
   /** Transport for every session; omit to use a real After Effects. */
   readonly transport?: HostTransport;
+  /** Host script with this project's static extension methods, if any. */
+  readonly hostScript?: string;
   /** Called after each test, for progress output. */
   readonly onResult?: (result: TestResult) => void;
 };
@@ -125,6 +127,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       ...(options.projectsDir === undefined ? {} : { projectsDir: options.projectsDir }),
       ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
       ...(options.transport === undefined ? {} : { transport: options.transport }),
+      ...(options.hostScript === undefined ? {} : { hostScript: options.hostScript }),
     });
     results.push(result);
     options.onResult?.(result);
@@ -153,6 +156,7 @@ type OneTestOptions = {
   /** Run-level default budget; a test may override it. */
   timeoutMs?: number;
   transport?: HostTransport;
+  hostScript?: string;
   updateSnapshots: boolean;
 };
 
@@ -186,6 +190,7 @@ async function runOne(
     ...(options.projectsDir === undefined ? {} : { projectsDir: options.projectsDir }),
     ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
     ...(options.transport === undefined ? {} : { transport: options.transport }),
+    ...(options.hostScript === undefined ? {} : { hostScript: options.hostScript }),
   };
   const fixture = new TestFixture(testInfo, fixtureOptions);
   const snapshots = new SnapshotStore({

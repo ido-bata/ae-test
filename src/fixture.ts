@@ -38,6 +38,12 @@ export type FixtureOptions = {
    * installation discovered on this machine.
    */
   readonly transport?: HostTransport;
+  /**
+   * Host script built by `ae-a8n extension build`, declaring this project's
+   * static extension methods. Forwarded to `AfterEffects.launch` unchanged:
+   * the fixture never reads or rewrites it.
+   */
+  readonly hostScript?: string;
 };
 
 export class TestFixture {
@@ -78,6 +84,9 @@ export class TestFixture {
         ...(this.#options.transport === undefined
           ? {}
           : { transport: this.#options.transport }),
+        ...(this.#options.hostScript === undefined
+          ? {}
+          : { hostScript: this.#options.hostScript }),
         ...(this.#options.timeoutMs === undefined
           ? {}
           : { timeoutMs: this.#options.timeoutMs }),
