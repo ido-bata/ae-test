@@ -15,13 +15,14 @@ import { pathToFileURL } from "node:url";
 import type { AfterEffects, HostTransport } from "@ido-bata/ae-a8n";
 
 import { expect, expectFrame } from "./expect.js";
-import { TestFixture, type FixtureOptions } from "./fixture.js";
+import { HostNotOwnedError, TestFixture, type FixtureOptions } from "./fixture.js";
 import { DEFAULT_TIMEOUT_MS, clearRegistry, setDeclaringFile } from "./registry.js";
 import { SnapshotStore } from "./snapshot.js";
 import type {
   Artifact,
   CleanupOutcome,
   RunSummary,
+  SessionFacts,
   TestContext,
   TestDeclaration,
   TestFailure,
@@ -48,6 +49,10 @@ export type RunOptions = {
   readonly transport?: HostTransport;
   /** Host script with this project's static extension methods, if any. */
   readonly hostScript?: string;
+  /** Explicit After Effects installation; omit to discover one. */
+  readonly installDir?: string;
+  /** Variables set inside the After Effects process before anything else runs. */
+  readonly hostEnvironment?: Readonly<Record<string, string>>;
   /** Called after each test, for progress output. */
   readonly onResult?: (result: TestResult) => void;
 };
@@ -128,6 +133,10 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
       ...(options.transport === undefined ? {} : { transport: options.transport }),
       ...(options.hostScript === undefined ? {} : { hostScript: options.hostScript }),
+      ...(options.installDir === undefined ? {} : { installDir: options.installDir }),
+      ...(options.hostEnvironment === undefined
+        ? {}
+        : { hostEnvironment: options.hostEnvironment }),
     });
     results.push(result);
     options.onResult?.(result);
@@ -157,6 +166,8 @@ type OneTestOptions = {
   timeoutMs?: number;
   transport?: HostTransport;
   hostScript?: string;
+  installDir?: string;
+  hostEnvironment?: Readonly<Record<string, string>>;
   updateSnapshots: boolean;
 };
 
@@ -191,6 +202,10 @@ async function runOne(
     ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
     ...(options.transport === undefined ? {} : { transport: options.transport }),
     ...(options.hostScript === undefined ? {} : { hostScript: options.hostScript }),
+    ...(options.installDir === undefined ? {} : { installDir: options.installDir }),
+    ...(options.hostEnvironment === undefined
+      ? {}
+      : { hostEnvironment: options.hostEnvironment }),
   };
   const fixture = new TestFixture(testInfo, fixtureOptions);
   const snapshots = new SnapshotStore({
@@ -204,6 +219,7 @@ async function runOne(
   let failure: TestFailure | undefined;
   let artifacts: Artifact[] = [];
   let cleanup: CleanupOutcome | undefined;
+  let sessionFacts: SessionFacts | undefined;
   let launched = false;
 
   try {
@@ -229,6 +245,11 @@ async function runOne(
     failure = { ...describeFailure(error, session), phase: launched ? "body" : "launch" };
   } finally {
     artifacts = fixture.collectArtifacts(session);
+    // Read before teardown: version, extension methods and the session's own
+    // identity are facts about the session that was used, and they disappear
+    // with it. Every read inside is guarded, so a fact nobody can measure is
+    // recorded as absent rather than replacing the test's own result.
+    sessionFacts = fixture.sessionFacts(session);
     cleanup = await fixture.teardown();
   }
 
@@ -255,6 +276,7 @@ async function runOne(
     durationMs: Date.now() - began,
     ...(failure === undefined ? {} : { failure }),
     ...(cleanup === undefined ? {} : { cleanup }),
+    ...(sessionFacts === undefined ? {} : { session: sessionFacts }),
     artifacts,
   };
 }
@@ -300,10 +322,18 @@ function describeFailure(error: unknown, session: AfterEffects | undefined): Tes
       : session.traceEvents.slice(-5).map((event) => `${event.op} (${event.status})`);
 
   const stack = error instanceof Error ? error.stack : undefined;
+  // The refusal's own kind is structured data, not only text: a report reader
+  // has to tell "someone's AE was already running" from "nobody can say whose
+  // AE this is" without parsing an English sentence.
+  const ownership =
+    error instanceof HostNotOwnedError
+      ? { kind: error.kind, evidence: error.evidence }
+      : undefined;
   return {
     name,
     message,
     ...(stack === undefined ? {} : { stack }),
+    ...(ownership === undefined ? {} : { ownership }),
     lastOperations,
   };
 }
