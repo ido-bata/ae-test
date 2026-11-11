@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `FixtureOptions.hostScript` and `RunOptions.hostScript`: a host script built
+  by `ae-a8n extension build`, forwarded unchanged to `AfterEffects.launch`,
+  so a suite can call the static host methods its own project declares
+  (`ae.call`). The fixture never reads or rewrites the script, and the fake
+  host answers the same calls, so the wiring is testable without After
+  Effects.
+
+### Not yet
+
+- The dependency stays on `@ido-bata/ae-a8n` `0.1.0-alpha.0`, the published
+  version, which has no extension API. `test/extension.test.ts` skips, with
+  its reason in the suite title, until the pin moves to a published version
+  that has one. Both cases were run against the packed, unpublished candidate
+  in a throwaway consumer project; a `file:` or `git` spec here would make a
+  green run unattributable (`docs/dependency-on-ae-a8n.md`).
+
 ## 0.1.0-alpha.0
 
 First alpha, published under the `next` dist-tag. Depends on
