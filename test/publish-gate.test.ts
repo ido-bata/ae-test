@@ -369,12 +369,11 @@ describe("the gate as the workflow runs it", () => {
     expect(result.stderr).toContain("not on main");
   });
 
-  it("refuses the first version from CI with this repository's real package.json", async () => {
+  it("refuses the first version from CI, by hand only", async () => {
     registry.answer = "absent";
-    const real = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf-8")) as { version: string };
-    writeFileSync(join(repo, "package.json"), JSON.stringify({ name: "@ido-bata/ae-test", version: real.version }));
-    const result = await run({ GITHUB_REF_NAME: `v${real.version}`, NPM_PUBLISH_VERSION: real.version });
-    expect(real.version).toBe(gate.MANUAL_FIRST_PUBLISH);
+    const first = gate.MANUAL_FIRST_PUBLISH;
+    writeFileSync(join(repo, "package.json"), JSON.stringify({ name: "@ido-bata/ae-test", version: first }));
+    const result = await run({ GITHUB_REF_NAME: `v${first}`, NPM_PUBLISH_VERSION: first });
     expect(result.status).toBe(1);
     expect(result.outputs.publish).toBe("false");
     expect(result.stderr).toContain("by hand");

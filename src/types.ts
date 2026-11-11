@@ -86,6 +86,33 @@ export type TestResultExtras = {
   readonly blockedReason?: string;
 };
 
+/** A project fixture this test resolved, and the bytes it had when it did. */
+export type FixtureDigest = {
+  readonly name: string;
+  readonly path: string;
+  /** SHA-256 of the file, or null when it could not be read. */
+  readonly sha256: string | null;
+};
+
+/**
+ * What the test actually ran against, recorded per test.
+ *
+ * `uid` is the uid of the process that ran the test body — inside an isolated
+ * session that is the session's own account, so the record says which account
+ * saw these results. `asid` is the audit session id of that account's GUI
+ * session (`launchctl print gui/<uid>`); null when it could not be read, which
+ * is also the answer on any platform other than macOS.
+ */
+export type SessionFacts = {
+  readonly uid: number | null;
+  readonly asid: number | null;
+  /** The host's own report about itself, from the launch probe. */
+  readonly ae: { readonly version: string; readonly build?: string } | null;
+  /** Static host methods this project's host script declared. */
+  readonly extensions: readonly string[];
+  readonly fixtures: readonly FixtureDigest[];
+};
+
 export type TestFailure = {
   readonly name: string;
   readonly message: string;
@@ -95,6 +122,13 @@ export type TestFailure = {
   readonly lastOperations: readonly string[];
   /** Where it failed: starting the session, the test body, or teardown. */
   readonly phase?: "launch" | "body" | "cleanup";
+  /**
+   * Set when the session was refused because this run did not start its host:
+   * "attached" when an After Effects was already running, "unknown" when
+   * ownership could not be decided. The distinction is the reader's, so it is
+   * structured rather than left inside the message.
+   */
+  readonly ownership?: { readonly kind: "attached" | "unknown"; readonly evidence: string };
 };
 
 export type TestResult = {
@@ -105,6 +139,8 @@ export type TestResult = {
   readonly durationMs: number;
   readonly failure?: TestFailure;
   readonly artifacts: readonly Artifact[];
+  /** Absent when no session was opened. */
+  readonly session?: SessionFacts;
 } & TestResultExtras;
 
 export type RunSummary = {

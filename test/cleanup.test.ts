@@ -159,7 +159,13 @@ describe("an After Effects this run did not start", () => {
 
     expect(summary.results[0]).toMatchObject({
       status: "failed",
-      failure: { name: "HostNotOwnedError", phase: "launch" },
+      failure: {
+        name: "HostNotOwnedError",
+        phase: "launch",
+        // Structured, not just text: a report reader must be able to tell
+        // "someone else's AE was running" from "nobody can say whose".
+        ownership: { kind, evidence: "fake transport" },
+      },
     });
     expect(summary.results.slice(1).map((result) => result.status)).toEqual(["blocked", "blocked"]);
     expect(bodies()).toEqual([]);

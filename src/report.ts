@@ -38,6 +38,11 @@ export function formatFailure(result: TestResult): string {
     // The body's failure is the reason; the teardown failure still happened.
     lines.push(`    teardown also failed: ${result.cleanup.name}: ${result.cleanup.message}`);
   }
+  if (result.failure.ownership !== undefined) {
+    lines.push(
+      `    host ownership: ${result.failure.ownership.kind} (${result.failure.ownership.evidence})`,
+    );
+  }
   if (result.failure.lastOperations.length > 0) {
     lines.push("    last operations:");
     for (const op of result.failure.lastOperations) {

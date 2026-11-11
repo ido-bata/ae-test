@@ -6,6 +6,8 @@
  * green run would be expensive, so they are pinned explicitly.
  */
 
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -106,7 +108,13 @@ test("explodes", async ({ ae }) => { await ae.version(); throw new Error("delibe
   });
 
   it("tears the session down when the test times out", async () => {
-    const transport = new FakeAfterEffectsTransport();
+    const inner = new FakeAfterEffectsTransport();
+    let launches = 0;
+    const realLaunch = inner.launch.bind(inner);
+    inner.launch = () => {
+      launches += 1;
+      return realLaunch();
+    };
     const file = writeSpec(
       "slow.spec.ts",
       `
@@ -114,10 +122,13 @@ test("never finishes", async () => { await new Promise(() => {}); });
 `,
     );
 
-    const summary = await run(options(file, { transport, timeoutMs: 150 }));
+    const summary = await run(options(file, { transport: inner, timeoutMs: 150 }));
     expect(summary.results[0]?.status).toBe("timed-out");
     expect(summary.results[0]?.failure?.message).toMatch(/exceeded its 150ms budget/);
-    expect(transport.closed).toBe(true);
+    expect(inner.closed).toBe(true);
+    // A timeout ends the wait; it does not re-send the test or launch again.
+    expect(launches).toBe(1);
+    expect(summary.results).toHaveLength(1);
   });
 
   it("honours a per-test timeout override", async () => {
@@ -244,6 +255,82 @@ test("fails", async ({ ae, fixture, expect }) => {
     expect(text).toContain("AssertionError");
     expect(text).toContain("last operations:");
     expect(text).toContain("project.open (ok)");
+  });
+
+  it("records what the test ran against: account, host version and fixture bytes", async () => {
+    const file = writeSpec(
+      "facts.spec.ts",
+      `
+test("opens the fixture", async ({ ae, fixture }) => {
+  await ae.openProject(fixture.project("fixture.aep"));
+});
+`,
+    );
+
+    const summary = await run(options(file));
+    const session = summary.results[0]?.session;
+    expect(session).toBeDefined();
+    // The process's own uid is the account the test body ran as; in an
+    // isolated session that is the session's account, not the caller's.
+    expect(session?.uid).toBe(typeof process.getuid === "function" ? process.getuid() : null);
+    expect(session?.asid === null || typeof session?.asid === "number").toBe(true);
+    expect(session?.ae?.version).toBeTruthy();
+    expect(session?.extensions).toEqual([]);
+    // The digest is of the bytes the test resolved, recorded once.
+    const path = join(projectDir, "fixture.aep");
+    expect(session?.fixtures).toEqual([
+      {
+        name: "fixture.aep",
+        path,
+        sha256: createHash("sha256").update("placeholder").digest("hex"),
+      },
+    ]);
+  });
+
+  it("records a host script's declared extension methods", async () => {
+    const scratch = mkdtempSync(join(tmpdir(), "ae-test-extension-facts-"));
+    const extension = join(scratch, "host-extension.ts");
+    writeFileSync(
+      extension,
+      `const extension = {
+  name: "facts",
+  version: "1.0.0",
+  methods: [{ name: "facts.host.version", source: "function (params) { return app.version; }" }],
+};
+export default extension;
+`,
+      "utf-8",
+    );
+    const hostScript = join(scratch, "host.generated.js");
+    execFileSync(
+      process.execPath,
+      [
+        join(resolve(import.meta.dirname, ".."), "node_modules", "@ido-bata", "ae-a8n", "dist", "cli.js"),
+        "extension",
+        "build",
+        "--extension",
+        extension,
+        "--out",
+        hostScript,
+      ],
+      { encoding: "utf-8" },
+    );
+    const file = writeSpec(
+      "extension-facts.spec.ts",
+      `
+test("declares one method", async ({ ae }) => {
+  await ae.extensionMethods();
+});
+`,
+    );
+
+    try {
+      const summary = await run(options(file, { hostScript }));
+      expect(summary.results[0]?.status).toBe("passed");
+      expect(summary.results[0]?.session?.extensions).toEqual(["facts.host.version"]);
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
   });
 
   it("attaches arbitrary files to the results directory", async () => {
