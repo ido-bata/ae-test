@@ -8,21 +8,23 @@
  * the fake host is doing the hosting.
  *
  * The extension API (`hostScript`, `extensionMethods()`, `call()`) arrives with
- * ae-a8n #61 and is not in `0.1.0-alpha.0`, the published version this package
- * pins (docs/dependency-on-ae-a8n.md, T059). These cases are kept and skipped
- * while the pin is older than the API; they run the moment the pin moves to a
- * published version that has it. Before that version existed, the same two
- * cases were run against the packed, unpublished candidate tarball in a
- * temporary consumer project — a throwaway `file:` spec there, never committed
- * here, which is the whole point of the policy test.
+ * ae-a8n #61 and is in `0.1.0-alpha.2`, the published version this package
+ * pins (docs/dependency-on-ae-a8n.md). These cases are not skipped: the pin is
+ * exact, so a version without the API would make this file fail, which is the
+ * honest outcome for a dependency that lost something the suite uses. Before
+ * that version was published, the same cases ran against the packed,
+ * unpublished candidate tarball in a temporary consumer project — a throwaway
+ * `file:` spec there, never committed here, which is the whole point of the
+ * policy test.
  */
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
-import { AfterEffects } from "@ido-bata/ae-a8n";
+import type { AfterEffects } from "@ido-bata/ae-a8n";
 import { FakeAfterEffectsTransport } from "@ido-bata/ae-a8n/testing";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -32,22 +34,14 @@ const PROJECT_ROOT = resolve(import.meta.dirname, "..");
 const EXTENSION = join(PROJECT_ROOT, "test", "fixtures", "host-extension.ts");
 const AE_A8N_CLI = join(PROJECT_ROOT, "node_modules", "@ido-bata", "ae-a8n", "dist", "cli.js");
 
-/** What `ae-a8n` #61 adds to a session; absent from the pinned version's types. */
+/** What `ae-a8n` #61 adds to a session: typed in the pinned version. */
 type ExtensionSession = AfterEffects & {
   extensionMethods(): readonly string[];
   call(name: string, params?: Readonly<Record<string, unknown>>): Promise<unknown>;
 };
 
-/**
- * Probes the installed package, not its version string: what decides whether
- * these cases can run is whether the API is there.
- */
-const SUPPORTS_EXTENSIONS =
-  typeof (AfterEffects as unknown as { prototype: Record<string, unknown> }).prototype.call ===
-  "function";
-
-describe.skipIf(!SUPPORTS_EXTENSIONS)(
-  "static host extensions (needs the ae-a8n extension API in the pinned version)",
+describe(
+  "static host extensions (the pinned ae-a8n has the extension API)",
   () => {
     let scratch: string;
     let hostScript: string;
@@ -105,6 +99,42 @@ describe.skipIf(!SUPPORTS_EXTENSIONS)(
         expect(await fixture.teardown()).toEqual({ status: "ok", quit: true });
       }
       expect(transport.closed).toBe(true);
+    });
+
+    it("carries the host script through the CLI, and the report names the declared method", () => {
+      const spec = join(scratch, "cli.spec.mjs");
+      writeFileSync(
+        spec,
+        `import { test } from ${JSON.stringify(
+          pathToFileURL(join(PROJECT_ROOT, "dist", "index.js")).href,
+        )};\n` +
+          `test("calls a declared method", async ({ ae, expect }) => {\n` +
+          `  expect(await ae.call("aetest.add", { a: 1, b: 2 })).toBe(3);\n` +
+          `});\n`,
+        "utf-8",
+      );
+      const resultsDir = join(scratch, "results");
+      execFileSync(
+        process.execPath,
+        [
+          join(PROJECT_ROOT, "dist", "cli.js"),
+          spec,
+          "--fake-host",
+          "--host-script",
+          hostScript,
+          "--results-dir",
+          resultsDir,
+        ],
+        { encoding: "utf-8" },
+      );
+
+      const report = JSON.parse(readFileSync(join(resultsDir, "report.json"), "utf-8")) as {
+        results: Array<{ status: string; session?: { extensions?: readonly string[] } }>;
+      };
+      expect(report.results[0]?.status).toBe("passed");
+      // The report says which methods the run could have called, so a green
+      // run is attributable to one host script.
+      expect(report.results[0]?.session?.extensions).toEqual(["aetest.add"]);
     });
 
     it("refuses an unknown method before sending it, naming the declared ones", async () => {

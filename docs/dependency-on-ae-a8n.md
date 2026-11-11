@@ -3,7 +3,7 @@
 From npm, as one exact published version:
 
 ```json
-"@ido-bata/ae-a8n": "0.1.0-alpha.0"
+"@ido-bata/ae-a8n": "0.1.0-alpha.2"
 ```
 
 - **Exact, not a range.** It is a pre-release, and `^0.1.0-alpha.0` would
@@ -41,6 +41,14 @@ there silently changes what is tested here — the reason this arrangement
 ended.
 
 ## History
+
+- `0.1.0-alpha.2` (this pin) is the first published version with the static
+  host extension API (`hostScript`, `extensionMethods()`, `call()`) and the
+  macOS/Windows isolated CLI. `test/extension.test.ts` ran for the first time
+  against a published version with this pin; before it, the same cases were
+  run against the packed, unpublished candidate in a throwaway consumer
+  project. It also carries `A8N_VERSION` and the typed `HostOwnership.code`.
+- `0.1.0-alpha.0` was the first published version, without the extension API.
 
 Until `0.1.0-alpha.0` was published, `ae-test` depended on
 `"file:../ae-a8n"`, and CI was to reach the private `ido-bata/ae-a8n`
