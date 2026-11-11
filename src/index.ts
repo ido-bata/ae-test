@@ -63,4 +63,4 @@ export type {
   TestStatus,
 } from "./types.js";
 
-export const AE_TEST_VERSION = "0.1.0-alpha.0";
+export const AE_TEST_VERSION = "0.1.0-alpha.1";

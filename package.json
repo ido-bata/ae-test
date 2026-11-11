@@ -1,6 +1,6 @@
 {
   "name": "@ido-bata/ae-test",
-  "version": "0.1.0-alpha.0",
+  "version": "0.1.0-alpha.1",
   "description": "Playwright-like tests for After Effects plugins and scripts, on top of @ido-bata/ae-a8n. macOS-verified alpha.",
   "type": "module",
   "license": "MIT",
