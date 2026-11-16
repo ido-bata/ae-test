@@ -1,11 +1,11 @@
 # Changelog
 
-## 0.1.0-alpha.1
+## 0.1.0-alpha.1 (unreleased)
 
 Depends on `@ido-bata/ae-a8n` `0.1.0-alpha.2` exactly — the first published
 version that carries the static host extension API, and the reason the
-extension cases now run instead of skipping. Published from `main` after this
-branch lands; the publish itself is a human action.
+extension cases now run instead of skipping. `0.1.0-alpha.2` also carries the
+ae-a8n `0.1.0-alpha.1` fixes noted below.
 
 ### Added
 
@@ -39,6 +39,17 @@ branch lands; the publish itself is a human action.
   cases that were kept and skipped on `0.1.0-alpha.0` now pass, and the CLI
   case proves `--host-script` reaches the session and the report names the
   declared method.
+- Through `ae` (ae-a8n `0.1.0-alpha.1`+): `ae.openProject()` rejects a
+  relative path with a `TypeError` before sending anything (ae-a8n#34);
+  `parameter(...).get()` and `set()` are typed `number | readonly number[]`
+  (ae-a8n#21); `parameter(...).get()` on a property group rejects with
+  `PropertyHasNoValueError` (ae-a8n#18); `set()` checks the value's shape on
+  the host and rejects a mismatch with `ParameterValueError` (ae-a8n#21);
+  `PropertyInfo` is a union on `kind` and `valueType` (ae-a8n#18/#21);
+  `effect.parameters()` lists properties without a value (ae-a8n#18);
+  `ae.project()` returns the open project without opening anything; and
+  per-call `timeoutMs` is available on `openProject`, `renderFrame` and
+  `project` (ae-a8n#22).
 
 ### Not yet
 

@@ -72,7 +72,7 @@ skip("not yet", async () => {});
 
 | Context | |
 | --- | --- |
-| `ae` | An `AfterEffects` session from ae-a8n, launched for this test and quit after it. Everything ae-a8n's API offers: `openProject`, `comp`, `layer`, `effects.apply/get/all`, `parameter(...).set/get`, `renderFrame` |
+| `ae` | An `AfterEffects` session from ae-a8n, launched for this test and quit after it. Everything ae-a8n's API offers: `openProject`, `comp`, `layer`, `effects.apply/get/all`, `parameter(...).set/get`, `renderFrame`. `openProject` takes an absolute path: pass `fixture.project(name)` |
 | `fixture.project(name)` | Absolute path of a project in the projects directory; a missing one fails as a setup error naming what is there |
 | `fixture.attach(name, data)` | Write a file into this test's output directory and list it as an artifact |
 | `testInfo` | `{ id, title, file, outputDir }` |

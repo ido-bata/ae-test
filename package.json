@@ -40,7 +40,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint src test --no-error-on-unmatched-pattern",
     "test": "npm run build && vitest run",
-    "check": "npm run typecheck && npm run lint && npm run test",
+    "check": "npm run build && npm run typecheck && npm run lint && npm test",
     "ae-test": "npm run build && node dist/cli.js",
     "check:package": "node scripts/check-packed-package.js"
   },
