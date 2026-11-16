@@ -14,8 +14,8 @@
  * recorded before the split keep working, but nothing is ever written there.
  */
 
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { basename, join } from "node:path";
 
 import type { RenderedFrame } from "@ido-bata/ae-a8n";
 
@@ -24,9 +24,11 @@ import {
   ImageComparisonError,
   comparePngFiles,
   formatImageDifference,
+  writeImageDiffArtifacts,
   type ImageComparisonOptions,
   type ImageDifference,
 } from "./image.js";
+import type { Artifact } from "./types.js";
 
 export type SnapshotStoreOptions = {
   /**
@@ -43,6 +45,12 @@ export type SnapshotStoreOptions = {
   readonly testId: string;
   /** Write new baselines instead of comparing. */
   readonly update: boolean;
+  /**
+   * Per-test output directory. When set, a failed pixel comparison leaves
+   * its evidence here (image copies, a diff PNG, a JSON diagnostic) and the
+   * files are reported as `diff` artifacts.
+   */
+  readonly artifactDir?: string;
 };
 
 export class SnapshotStore {
@@ -50,13 +58,22 @@ export class SnapshotStore {
   readonly #legacyDir: string | undefined;
   readonly #testId: string;
   readonly #update: boolean;
+  readonly #artifactDir: string | undefined;
+  readonly #artifacts: Artifact[] = [];
   #matched = 0;
+  #diffSequence = 0;
 
   constructor(options: SnapshotStoreOptions) {
     this.#dir = options.dir;
     this.#legacyDir = options.legacyDir;
     this.#testId = options.testId;
     this.#update = options.update;
+    this.#artifactDir = options.artifactDir;
+  }
+
+  /** Diff artifacts written by failed comparisons in this test. */
+  get artifacts(): readonly Artifact[] {
+    return this.#artifacts;
   }
 
   get matched(): number {
@@ -137,23 +154,100 @@ export class SnapshotStore {
       difference = comparePngFiles(baselinePng, frame.path, compareOptions);
     } catch (error) {
       const message = error instanceof ImageComparisonError ? error.message : String(error);
-      return Promise.reject(new AssertionError(`could not compare snapshot "${name}": ${message}`, frame));
+      const outcome = error instanceof Error ? error : new Error(message);
+      const diff = this.recordImageFailure({
+        name,
+        expectedPath: baselinePng,
+        actualPath: frame.path,
+        outcome,
+        ...(compareOptions === undefined ? {} : { options: compareOptions }),
+      });
+      return Promise.reject(
+        new AssertionError(
+          `could not compare snapshot "${name}": ${message}\n${diff.join("\n")}`,
+          frame,
+        ),
+      );
     }
 
     if (!difference.passed) {
+      const diff = this.recordImageFailure({
+        name,
+        expectedPath: baselinePng,
+        actualPath: frame.path,
+        outcome: difference,
+        ...(compareOptions === undefined ? {} : { options: compareOptions }),
+      });
       return Promise.reject(
         new AssertionError(
           `rendered output for "${name}" does not match its baseline within tolerance.\n` +
             `  expected sha256 ${baseline}\n` +
             `  received sha256 ${digest}\n` +
             `  baseline image: ${baselinePng}\n` +
-            formatImageDifference(difference, compareOptions),
+            formatImageDifference(difference, compareOptions) +
+            `\n${diff.join("\n")}`,
           frame,
         ),
       );
     }
     this.#matched += 1;
     return Promise.resolve();
+  }
+
+  /**
+   * Leaves diff evidence for a failed image comparison: copies of both
+   * images, a diff PNG when the images can be compared pixel-wise, and a
+   * JSON diagnostic. Returns the lines to append to the failure message.
+   * Does nothing when no artifact directory was configured — the failure
+   * itself is unchanged either way.
+   */
+  recordImageFailure(input: {
+    readonly name: string;
+    readonly expectedPath: string;
+    readonly actualPath: string;
+    readonly outcome: ImageDifference | ImageComparisonError | Error;
+    readonly options?: ImageComparisonOptions;
+  }): string[] {
+    if (this.#artifactDir === undefined) {
+      return [];
+    }
+    try {
+      this.#diffSequence += 1;
+      const baseName = `${this.#baseFor(input.name)}-diff-${this.#diffSequence}`;
+      const written = writeImageDiffArtifacts({
+        dir: join(this.#artifactDir, "diffs"),
+        baseName,
+        expectedPath: input.expectedPath,
+        actualPath: input.actualPath,
+        outcome: input.outcome,
+        ...(input.options === undefined ? {} : { options: input.options }),
+      });
+      for (const artifact of [
+        written.expectedPath,
+        written.actualPath,
+        written.diffPath,
+        written.reportPath,
+      ]) {
+        if (artifact !== undefined && existsSync(artifact)) {
+          this.#artifacts.push({
+            name: `diffs/${basename(artifact)}`,
+            path: artifact,
+            bytes: statSync(artifact).size,
+            kind: "diff",
+          });
+        }
+      }
+      return [
+        `  diff evidence: ${written.reportPath}` +
+          (written.diffPath === undefined
+            ? ""
+            : ` (images: ${written.expectedPath}, ${written.actualPath}, ${written.diffPath})`),
+      ];
+    } catch {
+      // Diff evidence is diagnostic, never load-bearing: whatever went wrong
+      // here must not replace the comparison failure it was meant to explain.
+      return [];
+    }
   }
 
   #pathFor(name: string): string {

@@ -342,6 +342,7 @@ async function runOne(
   let artifacts: Artifact[] = [];
   let cleanup: CleanupOutcome | undefined;
   let sessionFacts: SessionFacts | undefined;
+  let snapshots: SnapshotStore | undefined;
   let launched = false;
 
   try {
@@ -350,17 +351,19 @@ async function runOne(
     // The baseline directory is environment-scoped, and the environment is
     // only fully known once the session is up: the transport kind up front,
     // the host's own version from the launch probe.
-    const snapshots = new SnapshotStore({
+    snapshots = new SnapshotStore({
       dir: join(options.baselineRoot, snapshotEnvironmentKey(options.transport, session)),
       legacyDir: options.legacySnapshotsDir,
       testId,
       update: options.updateSnapshots,
+      artifactDir: outputDir,
     });
+    const snapshotStore = snapshots;
     const context: TestContext = {
       ae: session,
       fixture: fixture.fixture,
       testInfo,
-      expectFrame: (frame) => expectFrame(frame, snapshots),
+      expectFrame: (frame) => expectFrame(frame, snapshotStore),
       expect,
     };
     // A test's own budget wins; otherwise the run's; otherwise the default.
@@ -375,7 +378,10 @@ async function runOne(
     status = error instanceof TestTimeoutError ? "timed-out" : "failed";
     failure = { ...describeFailure(error, session), phase: launched ? "body" : "launch" };
   } finally {
-    artifacts = fixture.collectArtifacts(session);
+    artifacts = [
+      ...fixture.collectArtifacts(session),
+      ...(snapshots?.artifacts ?? []),
+    ];
     // Read before teardown: version, extension methods and the session's own
     // identity are facts about the session that was used, and they disappear
     // with it. Every read inside is guarded, so a fact nobody can measure is

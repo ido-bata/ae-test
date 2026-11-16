@@ -20,7 +20,7 @@
  */
 
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -165,6 +165,88 @@ test("fails on purpose", async ({ expect }) => { expect(1).toBe(2); });
 
   const failing = cli(["failing.spec.mjs", "--fake-host", "--results-dir", "results-failing"]);
   if (failing.status !== 1) fail(`failing suite exited ${failing.status}, expected 1`);
+
+  // A failed pixel comparison leaves diff evidence: image copies, a diff PNG
+  // and a JSON diagnostic, all listed as `diff` artifacts in the report.
+  writeFileSync(
+    join(project, "diff.spec.mjs"),
+    `import { test } from "@ido-bata/ae-test";
+test("two renders diverge", async ({ ae, fixture, expectFrame }) => {
+  const project = await ae.openProject(fixture.project("fixture.aep"));
+  const comp = await project.comp("Main");
+  const effect = await (await comp.layer("Solid 1")).effects.apply("ADBE Fake Gaussian Blur");
+  await effect.parameter("Amount").set(10);
+  const low = await comp.renderFrame(0, { subdirectory: "low" });
+  await expectFrame(low).toMatchSnapshot("low", { threshold: 0 });
+  await effect.parameter("Amount").set(90);
+  const high = await comp.renderFrame(0, { subdirectory: "high" });
+  await expectFrame(high).toMatchSnapshot("high", { threshold: 0 });
+});
+`,
+  );
+  const recordDiff = cli([
+    "diff.spec.mjs",
+    "--fake-host",
+    "--results-dir",
+    "results-diff",
+    "--baseline-dir",
+    "baselines-diff",
+    "--update-snapshots",
+  ]);
+  if (recordDiff.status !== 0) {
+    fail(`diff baseline run exited ${recordDiff.status}\n${recordDiff.stdout}\n${recordDiff.stderr}`);
+  }
+  // Corrupt the "high" baseline with the "low" render so the pixel comparison
+  // fails on the next run.
+  const diffEnv = join(project, "baselines-diff", "fake-in-process");
+  const lowPng = readdirSync(diffEnv).find((name) => name.endsWith("--low.png"));
+  const highPng = readdirSync(diffEnv).find((name) => name.endsWith("--high.png"));
+  if (lowPng === undefined || highPng === undefined) {
+    fail(`diff baselines not recorded under ${diffEnv}`);
+  }
+  copyFileSync(join(diffEnv, lowPng), join(diffEnv, highPng));
+  copyFileSync(
+    join(diffEnv, lowPng.replace(/\.png$/, ".sha256")),
+    join(diffEnv, highPng.replace(/\.png$/, ".sha256")),
+  );
+  const diffRun = cli([
+    "diff.spec.mjs",
+    "--fake-host",
+    "--results-dir",
+    "results-diff-2",
+    "--baseline-dir",
+    "baselines-diff",
+  ]);
+  if (diffRun.status !== 1) {
+    fail(`diff suite exited ${diffRun.status}, expected 1\n${diffRun.stdout}\n${diffRun.stderr}`);
+  }
+  const diffReport = JSON.parse(
+    readFileSync(join(project, "results-diff-2", "report.json"), "utf-8"),
+  );
+  const diffResult = diffReport.results.find(
+    (/** @type {{ status: string }} */ r) => r.status === "failed",
+  );
+  if (diffResult === undefined) fail("diff suite reported no failed test");
+  const diffArtifacts = diffResult.artifacts.filter(
+    (/** @type {{ kind: string }} */ a) => a.kind === "diff",
+  );
+  if (diffArtifacts.length < 3) {
+    fail(`failed comparison left ${diffArtifacts.length} diff artifacts, expected at least 3`);
+  }
+  for (const artifact of diffArtifacts) {
+    if (!existsSync(artifact.path)) fail(`diff artifact ${artifact.path} is in the report but not on disk`);
+  }
+  const diffJson = diffArtifacts.find((/** @type {{ name: string }} */ a) =>
+    a.name.endsWith(".diff.json"),
+  );
+  if (diffJson === undefined) fail("no .diff.json among the diff artifacts");
+  const diagnostic = JSON.parse(readFileSync(diffJson.path, "utf-8"));
+  if (diagnostic.difference?.differentPixels <= 0 || diagnostic.options?.threshold !== 0) {
+    fail(`unexpected diff diagnostic: ${JSON.stringify(diagnostic)}`);
+  }
+  if (!diffResult.failure?.message?.includes("diff evidence")) {
+    fail(`failure message does not reference the diff evidence: ${diffResult.failure?.message}`);
+  }
 
   // Bare `ae-test` in the consumer project: config + discovery, no flags.
   // The suite snapshots, so record baselines through the same config first —

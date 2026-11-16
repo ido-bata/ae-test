@@ -16,6 +16,13 @@
   project root. `node_modules` and dot-directories are skipped, results are
   sorted and deduplicated, and an empty selection exits 2.
 - `--real-host` overrides a config `"host": "fake"` for a single run.
+- Image diff artifacts: a failed pixel comparison (`toMatchSnapshot` with
+  tolerances, `toMatchFrame`, including comparisons that cannot run
+  pixel-wise such as a size mismatch) now leaves evidence under the test's
+  output directory — copies of both images, a `*.diff.png` marking diverging
+  pixels, and a `*.diff.json` diagnostic with counts, ratio, options and the
+  first difference. They appear in `report.json` as `diff` artifacts and the
+  failure message points at the JSON record. `Artifact.kind` gains `"diff"`.
 
 ### Changed
 

@@ -33,7 +33,7 @@ export type Artifact = {
   readonly path: string;
   readonly bytes: number;
   /** How the artifact ended up in the results directory. */
-  readonly kind: "render" | "trace" | "attachment";
+  readonly kind: "render" | "trace" | "attachment" | "diff";
 };
 
 export type TestInfo = {
