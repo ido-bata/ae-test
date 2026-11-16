@@ -32,6 +32,12 @@ ae-a8n `0.1.0-alpha.1` fixes noted below.
   and was left untouched) is kept apart from `unknown` (ownership could not be
   decided). `HostNotOwnedError` is exported and carries `kind` and
   `evidence`.
+- Pixel-level render comparison: `expectFrame(frame).toMatchFrame(other,
+  options)` compares two PNGs as RGBA, and `toMatchSnapshot(name, options)`
+  uses the same comparison after a digest mismatch. Options are `threshold`
+  (per-channel delta), `maxDiffPixels` and `maxDiffPixelRatio`; snapshot
+  updates now store the baseline PNG beside its SHA-256. Exact hash
+  comparison remains the default.
 
 ### Changed
 

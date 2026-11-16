@@ -45,11 +45,13 @@
     "check:package": "node scripts/check-packed-package.js"
   },
   "dependencies": {
-    "@ido-bata/ae-a8n": "0.1.0-alpha.2"
+    "@ido-bata/ae-a8n": "0.1.0-alpha.2",
+    "pngjs": "7.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.0",
     "@types/node": "^24.10.1",
+    "@types/pngjs": "^6.0.5",
     "eslint": "^9.39.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.46.4",
