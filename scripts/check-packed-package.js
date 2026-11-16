@@ -92,9 +92,28 @@ test("fails on purpose", async ({ expect }) => { expect(1).toBe(2); });
 `,
   );
 
+  // A consumer project can also be configured once and discovered: the config
+  // selects the suite directory and the fake host, so bare `ae-test` runs it.
+  mkdirSync(join(project, "suite"), { recursive: true });
+  writeFileSync(
+    join(project, "suite", "discovered.spec.mjs"),
+    readFileSync(join(project, "passing.spec.mjs"), "utf-8"),
+  );
+  writeFileSync(
+    join(project, "ae-test.config.json"),
+    JSON.stringify({
+      specs: ["suite/**/*.spec.mjs"],
+      host: "fake",
+      resultsDir: "results-config",
+      baselineDir: "baselines-config",
+    }),
+  );
+
   const bin = join(project, "node_modules", ".bin", "ae-test");
   /** @param {string[]} args */
   const cli = (args) => spawnSync(bin, args, { cwd: project, encoding: "utf-8" });
+  /** @param {string} dir @param {string[]} args */
+  const cliIn = (cwd, args) => spawnSync(bin, args, { cwd, encoding: "utf-8" });
 
   const passing = cli([
     "passing.spec.mjs",
@@ -147,7 +166,30 @@ test("fails on purpose", async ({ expect }) => { expect(1).toBe(2); });
   const failing = cli(["failing.spec.mjs", "--fake-host", "--results-dir", "results-failing"]);
   if (failing.status !== 1) fail(`failing suite exited ${failing.status}, expected 1`);
 
-  const none = cli([]);
+  // Bare `ae-test` in the consumer project: config + discovery, no flags.
+  // The suite snapshots, so record baselines through the same config first —
+  // exactly the flow a consumer follows once.
+  const record = cli(["--update-snapshots"]);
+  if (record.status !== 0) {
+    fail(`config/discovery update run exited ${record.status}\n${record.stdout}\n${record.stderr}`);
+  }
+  const discovered = cli([]);
+  if (discovered.status !== 0) {
+    fail(`config/discovery run exited ${discovered.status}\n${discovered.stdout}\n${discovered.stderr}`);
+  }
+  const discoveredReport = JSON.parse(
+    readFileSync(join(project, "results-config", "report.json"), "utf-8"),
+  );
+  if (discoveredReport.results.length !== 2 ||
+      discoveredReport.results.some((/** @type {{ status: string }} */ r) => r.status !== "passed")) {
+    fail(`discovered suite reported ${JSON.stringify(discoveredReport.results.map((/** @type {{status:string}} */ r) => r.status))}`);
+  }
+
+  // With no config and no specs in an empty directory, discovery is a setup
+  // error (2), not a green zero-test run.
+  const empty = join(project, "empty");
+  mkdirSync(empty, { recursive: true });
+  const none = cliIn(empty, []);
   if (none.status !== 2) fail(`no test files exited ${none.status}, expected 2`);
 
   console.log(
