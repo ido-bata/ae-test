@@ -11,6 +11,31 @@
 This is the procedure `@ido-bata/ae-a8n` uses (its `docs/releasing.md`, and
 ido-bata/ae-a8n#14 for staging), with the same scripts.
 
+## Release trains and candidates
+
+Versions ship through a release branch, not directly off `main`:
+
+1. **Integration.** `release/<version>` is cut from `main`. Ticket PRs target
+   it and land autonomously once their local gates pass (see the delivery
+   profile). `main` only moves when a release lands.
+2. **Freeze.** When the ticket scope is done, the release branch head is
+   frozen at a fixed SHA. From that point only release-blocking fixes land.
+3. **Candidate verification.** The complete applicable gate runs at the frozen
+   SHA: `npm run check`, `scripts/check-packed-package.js`, and — where the
+   supported matrix in [api.md](api.md) has real-host evidence — the real
+   After Effects E2E. Fake-host evidence is reported as fake-only; it never
+   substitutes for a real-host claim.
+4. **Release PR.** `release/<version> -> main` is release-class: it requires
+   explicit human approval even when green. This is the boundary between
+   autonomous ticket work and a released state.
+5. **Publish.** After the merge, the tag/publish flow below applies. Staging
+   is automated; approving the staged version with 2FA is a separate explicit
+   human act. Nothing publishes without it.
+
+Beta versions collect breaking changes (see the semver rules in
+[api.md](api.md)); a stable `1.0.0` candidate freezes the public contract
+documented there.
+
 ## What stops an accidental or double publish
 
 The repository is private and the organisation is on GitHub Free. On that

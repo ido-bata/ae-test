@@ -344,6 +344,12 @@ node scripts/check-packed-package.js
 `@ido-bata/ae-a8n` is pinned to one exact npm version
 ([docs/dependency-on-ae-a8n.md](docs/dependency-on-ae-a8n.md)).
 
+The public API surface, file formats, exit codes, versioning rules and the
+supported-environment statement are fixed in
+[docs/api.md](docs/api.md). Verification evidence levels live in
+[docs/verification.md](docs/verification.md); release procedure in
+[docs/releasing.md](docs/releasing.md).
+
 ## Ecosystem
 
 - **ae-a8n** — After Effects automation runtime and API

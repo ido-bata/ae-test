@@ -241,6 +241,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
 
   const reportPath = join(resultsDir, "report.json");
   const baseSummary: RunSummary = {
+    schema: "ae-test.report/v1",
     results,
     durationMs: Date.now() - began,
     resultsDir,

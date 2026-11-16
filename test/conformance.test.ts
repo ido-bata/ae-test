@@ -84,6 +84,7 @@ function realSession(): NonNullable<TestResult["session"]> {
 
 function summary(results: readonly TestResult[]): RunSummary {
   return {
+    schema: "ae-test.report/v1",
     results,
     durationMs: 1,
     resultsDir: dir,
