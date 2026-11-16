@@ -51,6 +51,8 @@ export type RunOptions = {
   readonly updateSnapshots?: boolean;
   /** Substring filter over test titles. */
   readonly grep?: string;
+  /** Only run tests declaring at least one of these capability IDs. */
+  readonly capabilityFilter?: readonly string[];
   /** Transport for every session; omit to use a real After Effects. */
   readonly transport?: HostTransport;
   /** Host script with this project's static extension methods, if any. */
@@ -113,8 +115,12 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   clearRegistry();
   await loadTestFiles(options.files);
 
+  const capabilityFilter = options.capabilityFilter;
   const declared = registeredTests().filter(
-    (candidate) => options.grep === undefined || candidate.title.includes(options.grep),
+    (candidate) =>
+      (options.grep === undefined || candidate.title.includes(options.grep)) &&
+      (capabilityFilter === undefined ||
+        candidate.capabilities.some((id) => capabilityFilter.includes(id))),
   );
 
   const results: TestResult[] = [];

@@ -463,7 +463,7 @@ function classify(
       if (isRefusal(result)) {
         return { result: "FAIL", classification: "refused" };
       }
-      if (result.failure?.phase === "launch") {
+      if (isUnknownOwnership(result) || result.failure?.phase === "launch") {
         return { result: "UNKNOWN", classification: "unknown" };
       }
       return { result: "FAIL", classification: "failed" };
@@ -487,8 +487,13 @@ function classify(
 }
 
 function isRefusal(result: TestResult): boolean {
+  return result.failure?.ownership?.kind === "attached";
+}
+
+function isUnknownOwnership(result: TestResult): boolean {
   return (
-    result.failure?.ownership !== undefined || result.failure?.name === "HostNotOwnedError"
+    result.failure?.ownership?.kind === "unknown" ||
+    result.failure?.name === "HostNotOwnedError"
   );
 }
 

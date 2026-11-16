@@ -1,0 +1,53 @@
+{
+  "schema": "ae-devtools.capability-catalog/v1",
+  "records": [
+    {
+      "id": "ae.operation.project.open",
+      "kind": "operation",
+      "compatibility": { "os": ["darwin", "win32"], "aeVersions": ["26.x"] },
+      "coverage": { "verification": "not-run", "evidenceRefs": [] }
+    },
+    {
+      "id": "ae.operation.comp.info",
+      "kind": "operation",
+      "compatibility": { "os": ["darwin", "win32"], "aeVersions": ["26.x"] },
+      "coverage": { "verification": "not-run", "evidenceRefs": [] }
+    },
+    {
+      "id": "ae.operation.comp.get-layer",
+      "kind": "operation",
+      "compatibility": { "os": ["darwin", "win32"], "aeVersions": ["26.x"] },
+      "coverage": { "verification": "not-run", "evidenceRefs": [] }
+    },
+    {
+      "id": "ae.operation.layer.get-layer",
+      "kind": "operation",
+      "compatibility": { "os": ["darwin", "win32"], "aeVersions": ["26.x"] },
+      "coverage": { "verification": "not-run", "evidenceRefs": [] }
+    },
+    {
+      "id": "ae.operation.effect.apply",
+      "kind": "operation",
+      "compatibility": { "os": ["darwin", "win32"], "aeVersions": ["26.x"] },
+      "coverage": { "verification": "not-run", "evidenceRefs": [] }
+    },
+    {
+      "id": "ae.operation.effect.set-parameter",
+      "kind": "operation",
+      "compatibility": { "os": ["darwin", "win32"], "aeVersions": ["26.x"] },
+      "coverage": { "verification": "not-run", "evidenceRefs": [] }
+    },
+    {
+      "id": "ae.operation.effect.get-parameter",
+      "kind": "operation",
+      "compatibility": { "os": ["darwin", "win32"], "aeVersions": ["26.x"] },
+      "coverage": { "verification": "not-run", "evidenceRefs": [] }
+    },
+    {
+      "id": "ae.operation.render.frame",
+      "kind": "operation",
+      "compatibility": { "os": ["darwin", "win32"], "aeVersions": ["26.x"] },
+      "coverage": { "verification": "not-run", "evidenceRefs": [] }
+    }
+  ]
+}

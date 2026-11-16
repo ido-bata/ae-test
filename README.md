@@ -191,6 +191,7 @@ ae-test <files...> [options]
   --projects-dir <dir>    where .aep fixtures live (default fixtures)
   --timeout <ms>          per-test budget (default 60000)
   --grep <substring>      only tests whose title contains this
+  --capability <id>       only tests declaring this capability ID (repeatable)
   --update-snapshots      record baselines instead of comparing
   --fake-host             use the in-process fake After Effects instead of a real one
   --conformance           write conformance.json evidence beside report.json
@@ -206,8 +207,10 @@ the first test). The fake host is never used unless `--fake-host` is given;
 it comes from `@ido-bata/ae-a8n/testing`, which ae-a8n marks unstable.
 
 Programmatic use: `run({ files, resultsDir, projectsDir, timeoutMs, grep,
-updateSnapshots, transport, conformance })` resolves to a `RunSummary`;
-`formatRun` and `exitCodeFor` turn it into what the CLI prints and returns.
+capabilityFilter, updateSnapshots, transport, conformance })` resolves to a
+`RunSummary`; `formatRun` and `exitCodeFor` turn it into what the CLI prints
+and returns. `capabilityFilter` keeps only tests that declare at least one of
+the listed capability IDs.
 `conformance` is `{ host: "fake" | "real", catalogPath?, sourceSha?, runId?,
 outPath? }`; `buildConformanceReport` / `writeConformanceReport` are also
 exported for consumers that assemble their own summary.
