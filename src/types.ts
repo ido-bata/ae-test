@@ -147,7 +147,18 @@ export type TestFailure = {
    * ownership could not be decided. The distinction is the reader's, so it is
    * structured rather than left inside the message.
    */
-  readonly ownership?: { readonly kind: "attached" | "unknown"; readonly evidence: string };
+  readonly ownership?: {
+    readonly kind: "attached" | "unknown";
+    readonly evidence: string;
+    /**
+     * What the refusal-time close reported, when it answered. On "unknown"
+     * ownership `quit: false` means an After Effects may still be running.
+     */
+    readonly quit?: boolean;
+    readonly quitReason?: string;
+    /** Set when the refusal-time close itself threw; quit/quitReason are then absent. */
+    readonly closeError?: string;
+  };
 };
 
 export type TestResult = {

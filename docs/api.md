@@ -74,7 +74,12 @@ breaking change として扱う。
 
 `report.json` / `conformance.json` は session の provenance（transport kind、
 real host の OS/arch、AE version/build、host script の宣言 method、fixture の
-SHA-256、uid/audit session id）を記録する。証拠は
+SHA-256、uid/audit session id）を記録する。host ownership の refusal
+（`HostNotOwnedError`）は `failure.ownership` に `kind`（`attached` /
+`unknown`）・`evidence`・拒否時 `close()` の結果 `quit` / `quitReason`、
+close 自体が失敗した時は `closeError` を構造化して残す。`quit` は「session が
+host を quit させたか」であり host の生死の証明ではない: `unknown` かつ
+`quit: false` は「起動したかもしれない AE が残っている可能性」を意味する。証拠は
 `fake-only` / `verified on real host` / `unknown` に分類され、fake host の
 green を real host の verified と読み替えてはならない
 （[verification.md](verification.md) の taxonomy が正本）。

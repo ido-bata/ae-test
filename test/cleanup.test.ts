@@ -16,7 +16,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { HostOwnership } from "@ido-bata/ae-a8n";
 import { FakeAfterEffectsTransport } from "@ido-bata/ae-a8n/testing";
 
-import { exitCodeFor, formatRun, run } from "../dist/index.js";
+import { exitCodeFor, formatRun, HostNotOwnedError, run } from "../dist/index.js";
 
 let resultsDir: string;
 let specsDir: string;
@@ -157,6 +157,7 @@ describe("an After Effects this run did not start", () => {
     transport.ownershipKind = kind;
     const summary = await run({ files: [spec()], resultsDir, projectsDir: projectDir, transport });
 
+    const failure = summary.results[0]?.failure;
     expect(summary.results[0]).toMatchObject({
       status: "failed",
       failure: {
@@ -167,6 +168,17 @@ describe("an After Effects this run did not start", () => {
         ownership: { kind, evidence: "fake transport" },
       },
     });
+    // The refusal asked the session to close and recorded what it answered:
+    // a non-owned host is never quit, so `quit: false` travels into the
+    // report — on "unknown" that is the difference between a clean refusal
+    // and a leftover After Effects.
+    expect(failure?.ownership?.quit).toBe(false);
+    // The driver declines to quit a host it does not own; that reason is
+    // evidence too, not noise.
+    expect(failure?.ownership?.quitReason).toContain("not quitting");
+    expect(failure?.message).toContain(
+      kind === "attached" ? "left untouched" : "may still be running",
+    );
     expect(summary.results.slice(1).map((result) => result.status)).toEqual(["blocked", "blocked"]);
     expect(bodies()).toEqual([]);
     expect(transport.app.quitCount).toBe(0);
@@ -187,5 +199,34 @@ describe("a clean run", () => {
       ["passed", { status: "ok", quit: true }],
     ]);
     expect(exitCodeFor(summary)).toBe(0);
+  });
+});
+
+describe("HostNotOwnedError wording", () => {
+  it("says an attached host was left untouched", () => {
+    const error = new HostNotOwnedError("attached", "pid 42 answered first");
+    expect(error.message).toContain("left untouched");
+    expect(error.quit).toBeUndefined();
+    expect(error.closeError).toBeUndefined();
+  });
+
+  it("warns about a possible leftover when the close reports no quit", () => {
+    const error = new HostNotOwnedError("unknown", "no marker", {
+      quit: false,
+      reason: "not quitting a host this session does not own",
+    });
+    expect(error.message).toContain("may still be running");
+    expect(error.quit).toBe(false);
+    expect(error.quitReason).toContain("not quitting");
+  });
+
+  it("does not claim the close was asked when the close itself failed", () => {
+    const error = new HostNotOwnedError("unknown", "no marker", {
+      error: "transport gone",
+    });
+    expect(error.message).toContain("close the session failed");
+    expect(error.message).not.toContain("asked the session to close");
+    expect(error.closeError).toBe("transport gone");
+    expect(error.quit).toBeUndefined();
   });
 });

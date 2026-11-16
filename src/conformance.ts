@@ -158,7 +158,13 @@ export type ConformanceRecord = {
     readonly name: string;
     readonly message: string;
     readonly phase?: string;
-    readonly ownership?: { readonly kind: string; readonly evidence: string };
+    readonly ownership?: {
+      readonly kind: string;
+      readonly evidence: string;
+      readonly quit?: boolean;
+      readonly quitReason?: string;
+      readonly closeError?: string;
+    };
   };
   readonly diagnostics: readonly ConformanceDiagnostic[];
 };

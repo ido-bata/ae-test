@@ -469,7 +469,13 @@ function describeFailure(error: unknown, session: AfterEffects | undefined): Tes
   // AE this is" without parsing an English sentence.
   const ownership =
     error instanceof HostNotOwnedError
-      ? { kind: error.kind, evidence: error.evidence }
+      ? {
+          kind: error.kind,
+          evidence: error.evidence,
+          ...(error.quit === undefined ? {} : { quit: error.quit }),
+          ...(error.quitReason === undefined ? {} : { quitReason: error.quitReason }),
+          ...(error.closeError === undefined ? {} : { closeError: error.closeError }),
+        }
       : undefined;
   return {
     name,
