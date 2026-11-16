@@ -167,6 +167,8 @@ export type RunSummary = {
   readonly conformancePath?: string;
   /** `conformance.json`'s own ok flag, when conformance evidence was written. */
   readonly conformanceOk?: boolean;
+  /** True when filters (or empty spec files) selected zero tests to run. */
+  readonly noTestsSelected?: boolean;
 };
 
 export type { RenderedFrame, TraceEvent };

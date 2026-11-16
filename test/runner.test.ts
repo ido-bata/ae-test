@@ -194,11 +194,12 @@ skip("not yet", async () => { throw new Error("should not run"); });
     expect(countByStatus(summary.results).skipped).toBe(1);
   });
 
-  it("returns zero tests and a passing exit code for an empty selection", async () => {
+  it("fails the run when a filter selects zero tests", async () => {
     const file = writeSpec("noop.spec.ts", "");
     const summary = await run(options(file, { grep: "nothing matches this" }));
     expect(summary.results).toHaveLength(0);
-    expect(exitCodeFor(summary)).toBe(0);
+    expect(summary.noTestsSelected).toBe(true);
+    expect(exitCodeFor(summary)).toBe(1);
   });
 
   it("counts statuses and flags failures", async () => {

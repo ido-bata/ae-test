@@ -9,6 +9,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   buildConformanceReport,
   clearRegistry,
+  environmentBlockReason,
+  evaluateCompatibility,
   exitCodeFor,
   loadCapabilityCatalog,
   run,
@@ -185,6 +187,19 @@ describe("conformance classification", () => {
     expect(report.records.every((record) => record.catalogBinding === null)).toBe(true);
   });
 
+  it("does not promote a pass that never launched a session", () => {
+    const report = reportFor([result({}, ["session"])]);
+    const record = report.records[0];
+
+    expect(record?.classification).toBe("unknown");
+    expect(record?.result).toBe("UNKNOWN");
+    expect(record?.catalogBinding).toBeNull();
+    expect(record?.diagnostics).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: "session-not-launched" })]),
+    );
+    expect(report.ok).toBe(false);
+  });
+
   it("marks a capability missing from the catalog as unknown, not fake-only", () => {
     const catalogPath = join(dir, "catalog.json");
     writeFileSync(
@@ -228,6 +243,163 @@ describe("conformance classification", () => {
   });
 });
 
+describe("environment compatibility", () => {
+  const row = {
+    compatibility: {
+      os: ["darwin"],
+      architectures: ["arm64"],
+      aeVersions: ["26.x"],
+    },
+  };
+
+  it("evaluates os, arch and AE version independently", () => {
+    expect(
+      evaluateCompatibility(row, {
+        os: "darwin",
+        arch: "arm64",
+        aeVersion: "26.0.0",
+      }).verdict,
+    ).toBe("compatible");
+    expect(
+      evaluateCompatibility(row, { os: "win32", arch: "arm64", aeVersion: "26.0.0" }).verdict,
+    ).toBe("incompatible");
+    expect(
+      evaluateCompatibility(row, { os: "darwin", arch: "x64", aeVersion: "26.0.0" }).verdict,
+    ).toBe("incompatible");
+    expect(
+      evaluateCompatibility(row, { os: "darwin", arch: "arm64", aeVersion: "25.9" }).verdict,
+    ).toBe("incompatible");
+  });
+
+  it("treats an unobserved AE version as unknown, not incompatible", () => {
+    const verdict = evaluateCompatibility(row, { os: "darwin", arch: "arm64" });
+    expect(verdict.verdict).toBe("unknown");
+    expect(verdict.reasons.join(" ")).toContain("ae version");
+  });
+
+  it("blocks only when every catalog-known capability is incompatible", () => {
+    const catalog = loadCapabilityCatalog(
+      resolve(import.meta.dirname, "..", "fixtures", "conformance", "capability-catalog.json"),
+    );
+    // All declared IDs are compatible with darwin/arm64 → no block.
+    expect(
+      environmentBlockReason(CAPABILITY_IDS, catalog, { os: "darwin", arch: "arm64" }),
+    ).toBeUndefined();
+    // Every ID declares win32-only → blocked on darwin.
+    const win32Only = {
+      ...catalog,
+      records: new Map(
+        CAPABILITY_IDS.map((id) => [
+          id,
+          { compatibility: { os: ["win32"], aeVersions: ["26.x"] } },
+        ]),
+      ),
+    };
+    expect(
+      environmentBlockReason(CAPABILITY_IDS, win32Only, { os: "darwin", arch: "arm64" }),
+    ).toContain("compatible with this environment");
+    // A mix of compatible and incompatible still runs.
+    const mixed = {
+      ...catalog,
+      records: new Map([
+        ["ae.operation.render.frame", { compatibility: { os: ["win32"] } }],
+        ["ae.operation.project.open", { compatibility: { os: ["darwin", "win32"] } }],
+      ]),
+    };
+    expect(
+      environmentBlockReason(
+        ["ae.operation.render.frame", "ae.operation.project.open"],
+        mixed,
+        { os: "darwin", arch: "arm64" },
+      ),
+    ).toBeUndefined();
+  });
+
+  it("reports a capability incompatible with the observed AE version", () => {
+    const catalogPath = join(dir, "catalog.json");
+    writeFileSync(
+      catalogPath,
+      JSON.stringify({
+        schema: "ae-devtools.capability-catalog/v1",
+        records: CAPABILITY_IDS.map((id) => ({
+          id,
+          compatibility:
+            id === "ae.operation.render.frame"
+              ? { os: ["darwin", "win32"], aeVersions: ["99.x"] }
+              : { os: ["darwin", "win32"], aeVersions: ["26.x"] },
+        })),
+      }),
+    );
+
+    const report = reportFor(
+      [
+        result({
+          capabilities: ["ae.operation.render.frame"],
+          session: { uid: 501, asid: 1, ae: { version: "26.0.0" }, extensions: [], fixtures: [] },
+        }),
+      ],
+      { catalogPath },
+    );
+
+    expect(report.records[0]?.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "environment-incompatible",
+          capabilityId: "ae.operation.render.frame",
+        }),
+      ]),
+    );
+    expect(report.ok).toBe(false);
+  });
+});
+
+describe("evidence aggregation", () => {
+  it("hashes plugin and SDK binaries into the report", () => {
+    const pluginPath = join(dir, "effect.plugin");
+    const sdkPath = join(dir, "ae-sdk.a");
+    writeFileSync(pluginPath, "plugin-bytes");
+    writeFileSync(sdkPath, "sdk-bytes");
+
+    const report = reportFor([result()], {
+      pluginBinaries: [pluginPath],
+      sdkBinaries: [sdkPath, join(dir, "missing.bin")],
+    });
+
+    expect(report.binaries.plugin).toHaveLength(1);
+    expect(report.binaries.plugin[0]?.sha256).toBe(
+      createHash("sha256").update("plugin-bytes").digest("hex"),
+    );
+    expect(report.binaries.sdk).toHaveLength(2);
+    expect(report.binaries.sdk[0]?.sha256).toBe(
+      createHash("sha256").update("sdk-bytes").digest("hex"),
+    );
+    expect(report.binaries.sdk[1]?.sha256).toBeNull();
+    expect(report.diagnostics).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: "binary-unreadable" })]),
+    );
+  });
+
+  it("groups records into an os × AE-version matrix", () => {
+    const report = reportFor([
+      result(),
+      result({
+        id: "spec#2",
+        session: { uid: 501, asid: 1, ae: { version: "27.1", build: "3" }, extensions: [], fixtures: [] },
+      }),
+      result({ id: "spec#3", status: "skipped", durationMs: 0 }, ["session", "cleanup"]),
+    ]);
+
+    expect(report.summary.matrix).toHaveLength(3);
+    const current = report.summary.matrix.find((cell) => cell.aeVersion === "26.5");
+    expect(current?.total).toBe(1);
+    expect(current?.byResult.PASS).toBe(1);
+    const other = report.summary.matrix.find((cell) => cell.aeVersion === "27.1");
+    expect(other?.total).toBe(1);
+    const noSession = report.summary.matrix.find((cell) => cell.aeVersion === null);
+    expect(noSession?.byResult.NOT_RUN).toBe(1);
+  });
+});
+
 describe("capability catalog", () => {
   it("rejects a catalog with the wrong schema instead of guessing", () => {
     const catalogPath = join(dir, "catalog.json");
@@ -262,6 +434,8 @@ describe("runner integration", () => {
         records: CAPABILITY_IDS.map((id) => ({ id })),
       }),
     );
+    const pluginPath = join(dir, "effect.plugin");
+    writeFileSync(pluginPath, "plugin-bytes");
     const resultsDir = join(dir, "results");
 
     const summary = await run({
@@ -276,6 +450,7 @@ describe("runner integration", () => {
         sourceSha: "deadbeef",
         runId: "vertical-slice",
         recordedAt: "2026-11-16T00:00:00.000Z",
+        pluginBinaries: [pluginPath],
       },
     });
 
@@ -291,6 +466,11 @@ describe("runner integration", () => {
     expect(
       report.records.every((record) => record.artifactHashes.every((artifact) => artifact.sha256 !== null)),
     ).toBe(true);
+    expect(report.binaries.plugin).toHaveLength(1);
+    expect(report.binaries.plugin[0]?.sha256).toBe(
+      createHash("sha256").update("plugin-bytes").digest("hex"),
+    );
+    expect(report.summary.matrix.length).toBeGreaterThan(0);
 
     const runReport = JSON.parse(readFileSync(summary.reportPath, "utf-8")) as RunSummary;
     expect(runReport.conformancePath).toBe(summary.conformancePath);
@@ -326,6 +506,60 @@ describe("runner integration", () => {
     expect(report.ok).toBe(false);
     expect(summary.conformanceOk).toBe(false);
     expect(exitCodeFor(summary)).toBe(1);
+  });
+
+  it("fails when a capability filter selects no tests", async () => {
+    const summary = await run({
+      files: [SPEC],
+      resultsDir: join(dir, "results"),
+      projectsDir: PROJECTS_DIR,
+      transport: new FakeAfterEffectsTransport(),
+      capabilityFilter: ["ae.operation.not.declared"],
+      conformance: { host: "fake", runId: "empty-selection" },
+    });
+
+    expect(summary.results).toHaveLength(0);
+    expect(summary.noTestsSelected).toBe(true);
+    expect(summary.conformanceOk).toBe(false);
+    expect(exitCodeFor(summary)).toBe(1);
+
+    const report = JSON.parse(readFileSync(summary.conformancePath ?? "", "utf-8")) as ConformanceReport;
+    expect(report.ok).toBe(false);
+    expect(report.diagnostics).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: "no-tests-selected" })]),
+    );
+  });
+
+  it("blocks tests whose capabilities are all incompatible with this OS", async () => {
+    const catalogPath = join(dir, "catalog.json");
+    writeFileSync(
+      catalogPath,
+      JSON.stringify({
+        schema: "ae-devtools.capability-catalog/v1",
+        // "plan9" is never this host's os, on any platform CI runs.
+        records: CAPABILITY_IDS.map((id) => ({
+          id,
+          compatibility: { os: ["plan9"], aeVersions: ["26.x"] },
+        })),
+      }),
+    );
+
+    const summary = await run({
+      files: [SPEC],
+      resultsDir: join(dir, "results"),
+      projectsDir: PROJECTS_DIR,
+      transport: new FakeAfterEffectsTransport(),
+      conformance: { host: "fake", catalogPath, runId: "env-blocked" },
+    });
+
+    expect(summary.results.length).toBeGreaterThan(0);
+    expect(summary.results.every((result) => result.status === "blocked")).toBe(true);
+    expect(summary.results[0]?.blockedReason).toContain("compatible with this environment");
+    expect(exitCodeFor(summary)).toBe(1);
+
+    const report = JSON.parse(readFileSync(summary.conformancePath ?? "", "utf-8")) as ConformanceReport;
+    expect(report.records.every((record) => record.classification === "blocked")).toBe(true);
+    expect(report.ok).toBe(false);
   });
 
   it("selects tests by declared capability ID", async () => {
