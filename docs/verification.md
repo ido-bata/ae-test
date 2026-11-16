@@ -8,11 +8,13 @@ nothing about the other.
 
 `.github/workflows/ci.yml`, Ubuntu, no After Effects:
 
-- `npm ci` with `@ido-bata/ae-a8n@0.1.0-alpha.0` from registry.npmjs.org,
+- `npm ci` with `@ido-bata/ae-a8n@0.1.0-alpha.2` from registry.npmjs.org,
   integrity checked against `package-lock.json`, recorded in the job summary;
-- build, typecheck, lint, 36 tests (runner, fixtures, teardown, snapshots,
+- build, typecheck, lint, 119 tests (runner, fixtures, teardown, snapshots,
   reports, the dependency pin, the version constant, the README examples
-  type-checked against `dist`);
+  type-checked against `dist`, and the static-host-extension cases — those now
+  run, because the pinned version is the first published one with the
+  extension API);
 - the CLI against `specs/plugin-render.spec.ts` with `--fake-host`, recording
   then comparing snapshots;
 - `scripts/check-packed-package.js`: the packed tarball installed into an
@@ -47,6 +49,25 @@ not left running, and the fixture's bytes unchanged.
 | --- | --- | --- | --- |
 | 2026-10-15 05:15–05:48 | 1261f77 (pre-release) | bb4c197, from a checkout | 20 of 20 runs passed (10 with a third-party CEP extension disabled, 10 enabled) |
 | 2026-10-15 12:30 | 5d30ef6 (this release) | **0.1.0-alpha.0 from npm** | pass: B 4/4 in 21 s, snapshot matched the earlier baseline (`44c9d3df…`), every session quit; A red as intended |
+| 2026-11-11 | 0.1.0-alpha.1 branch (this one) | `0.1.0-alpha.2` from npm | **not run.** The macOS host on this machine is logged in as the console user, and the isolated lane needs a second account that has been logged in once (`offstage doctor`: "no computeruse account"; `ae-a8n doctor`: `A8N-SESSION-003`, uid 501 is the console uid). ae-test does not fall back to the console desktop, so there is no honest real-host row for this branch yet |
+
+### Isolated session (not yet run at all)
+
+`ae-a8n test --user <helper> -- npx ae-test …` is the intended shape for a
+real-host run that does not use the console desktop. It is unimplemented
+evidence-wise here: the helper account on this Mac has never been logged in
+(`offstage session status --user test`: "none, nothing is logged in under that
+account"), and the machine setup it needs — fast-user-switch login, TCC
+grants, AE scripting permission, one Adobe sign-in in that session — is human
+work by design (`ae-a8n setup` will not do it, and nothing here creates an
+account). Until that exists, the only macOS real-host evidence remains the
+2026-10-15 rows above, which used the console session directly.
+
+`report.json` now records `uid`, the GUI session's `asid` (read with
+`launchctl print gui/<uid>` on macOS), the host's `version`/`build`, the
+declared extension methods and the SHA-256 of every project fixture a test
+resolved. Those fields are `automated test` against the fake host today; they
+have not been observed on a real host.
 
 Evidence (proof.json, report.json, traces, renders, a sha256 manifest) is kept
 outside the repository, in the project's evidence store

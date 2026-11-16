@@ -2,33 +2,61 @@
 
 ## 0.1.0-alpha.1 (unreleased)
 
-Depends on `@ido-bata/ae-a8n` `0.1.0-alpha.1` exactly (was `0.1.0-alpha.0`),
-which carries its fixes to users: `0.1.0-alpha.0` pins `0.1.0-alpha.0`, so
-publishing ae-a8n alone reaches no one. ae-test's own API is unchanged, but
-the `ae` session in every test is ae-a8n's, so its breaking changes reach
-specs that use the affected calls.
+Depends on `@ido-bata/ae-a8n` `0.1.0-alpha.2` exactly — the first published
+version that carries the static host extension API, and the reason the
+extension cases now run instead of skipping. `0.1.0-alpha.2` also carries the
+ae-a8n `0.1.0-alpha.1` fixes noted below.
 
-### Changed (from ae-a8n; breaking for specs that use them)
+### Added
 
-- `ae.openProject()` rejects a relative path with a `TypeError` before
-  sending anything (ae-a8n#34). `fixture.project(name)` returns an absolute
-  path, so specs that open projects through it are unaffected.
-- `parameter(...).get()` and `set()` are typed `number | readonly number[]`
-  instead of `number` (ae-a8n#21). Numeric parameters still read and write
-  plain numbers; a spec that does arithmetic on the result narrows first.
-- `parameter(...).get()` on a property group rejects with
-  `PropertyHasNoValueError` instead of resolving `undefined` (ae-a8n#18).
-- `set()` checks the value's shape on the host and rejects a mismatch with
-  `ParameterValueError` (ae-a8n#21).
-- `PropertyInfo` is a union on `kind` and `valueType`; `value` exists only
-  when `kind` is `"value"` (ae-a8n#18, ae-a8n#21).
+- `FixtureOptions.hostScript` and `RunOptions.hostScript`: a host script built
+  by `ae-a8n extension build`, forwarded unchanged to `AfterEffects.launch`,
+  so a suite can call the static host methods its own project declares
+  (`ae.call`). The fixture never reads or rewrites the script, and the fake
+  host answers the same calls, so the wiring is testable without After
+  Effects. `ae-test --host-script <file>` carries the same option through the
+  CLI.
+- `FixtureOptions.installDir` and `FixtureOptions.hostEnvironment` (also on
+  `RunOptions`): forwarded unchanged to `AfterEffects.launch`, for a machine
+  with more than one installation and for variables the host needs in its own
+  process.
+- `report.json` records, per test, what the test ran against
+  (`TestResult.session`): the uid of the process that ran it and that
+  account's audit session id on macOS (`launchctl print gui/<uid>`), the
+  host's own version and build from the launch probe, the static methods the
+  host script declared, and a SHA-256 for every project fixture the test
+  resolved. A fact that cannot be measured is `null` or empty, never a
+  reason to lose the test's own result.
+- A refusal for an After Effects this run did not start is now structured in
+  the report (`failure.ownership`): `attached` (a host was already running
+  and was left untouched) is kept apart from `unknown` (ownership could not be
+  decided). `HostNotOwnedError` is exported and carries `kind` and
+  `evidence`.
 
-### Added (through `ae`)
+### Changed
 
-- `effect.parameters()` lists properties without a value instead of failing
-  the call (ae-a8n#18).
-- `ae.project()` returns the open project without opening anything; per-call
-  `timeoutMs` on `openProject`, `renderFrame` and `project` (ae-a8n#22).
+- `test/extension.test.ts` runs against the published dependency: the two
+  cases that were kept and skipped on `0.1.0-alpha.0` now pass, and the CLI
+  case proves `--host-script` reaches the session and the report names the
+  declared method.
+- Through `ae` (ae-a8n `0.1.0-alpha.1`+): `ae.openProject()` rejects a
+  relative path with a `TypeError` before sending anything (ae-a8n#34);
+  `parameter(...).get()` and `set()` are typed `number | readonly number[]`
+  (ae-a8n#21); `parameter(...).get()` on a property group rejects with
+  `PropertyHasNoValueError` (ae-a8n#18); `set()` checks the value's shape on
+  the host and rejects a mismatch with `ParameterValueError` (ae-a8n#21);
+  `PropertyInfo` is a union on `kind` and `valueType` (ae-a8n#18/#21);
+  `effect.parameters()` lists properties without a value (ae-a8n#18);
+  `ae.project()` returns the open project without opening anything; and
+  per-call `timeoutMs` is available on `openProject`, `renderFrame` and
+  `project` (ae-a8n#22).
+
+### Not yet
+
+- Real After Effects verification of this version. The macOS real-host table
+  in [docs/verification.md](docs/verification.md) still names
+  `0.1.0-alpha.0`; nothing here has been run against a real host yet, and an
+  isolated-session run needs the helper account described there.
 
 ## 0.1.0-alpha.0
 

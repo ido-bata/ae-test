@@ -38,7 +38,7 @@ Two different kinds of evidence. They are not interchangeable.
 | | What it shows | Where |
 | --- | --- | --- |
 | **Fake host** (automated) | The runner, fixtures, assertions, snapshots, reports, CLI exit codes and teardown rules, against an in-process model of After Effects. No After Effects involved. | CI on every pull request: the unit tests (including a type check of this README's examples against the built types), the CLI smoke, and `scripts/check-packed-package.js` (the packed tarball installed into an empty project, run through the installed `ae-test`) |
-| **macOS, real After Effects** (manual) | The same CLI, without `--fake-host`, driving After Effects 2026 (26.5x89, Japanese UI) on macOS 27 / arm64: a real `.aep`, a built-in effect by match name, parameter write/read, a PNG render, snapshot comparison, teardown | Run by hand on one Mac; not part of CI. Latest: this release's code with `@ido-bata/ae-a8n@0.1.0-alpha.0` from npm, 4/4 passed. History in [docs/verification.md](docs/verification.md) |
+| **macOS, real After Effects** (manual) | The same CLI, without `--fake-host`, driving After Effects 2026 (26.5x89, Japanese UI) on macOS 27 / arm64: a real `.aep`, a built-in effect by match name, parameter write/read, a PNG render, snapshot comparison, teardown | Run by hand on one Mac; not part of CI. Latest recorded run: the 0.1.0-alpha.0 code with `@ido-bata/ae-a8n@0.1.0-alpha.0` from npm, 4/4 passed. This branch's code has **not** been re-run on a real host (see [docs/verification.md](docs/verification.md)) |
 | **Windows** | Nothing. ae-test does not run there today: ae-a8n cannot establish that it started After Effects on Windows, and ae-test refuses any session it does not own | — |
 
 A green CI run means the fake host passed. It does not mean After Effects
@@ -50,7 +50,7 @@ behaved; only a real-host run says that.
 npm install --save-dev @ido-bata/ae-test@next
 ```
 
-`@ido-bata/ae-a8n` comes with it, pinned to exactly `0.1.0-alpha.0`.
+`@ido-bata/ae-a8n` comes with it, pinned to exactly `0.1.0-alpha.2`.
 
 Requirements: Node 22 or later (24 to write specs in TypeScript, see below).
 For a real host, additionally: macOS, After Effects installed in the default
@@ -97,6 +97,33 @@ whose After Effects did not quit is not reported as passed, and once a host
 cannot be vouched for the remaining tests are `blocked` instead of being run
 into it.
 
+**Static host methods.** A project's own host operations are declared in an
+extension module and compiled ahead of time by `ae-a8n`, then reached through
+`ae.call`:
+
+```bash
+ae-a8n extension build --extension ./host-extension.ts --out ./.ae-a8n/host.generated.js
+ae-test specs/plugin-render.spec.ts --host-script ./.ae-a8n/host.generated.js
+```
+
+The script is forwarded to `AfterEffects.launch` unchanged; ae-test never
+reads, rewrites or evaluates it, and a method the script does not declare is
+refused before anything is sent. From the API, pass `hostScript` to `run()`.
+`report.json` records the declared methods under `session.extensions`.
+
+**Isolated session.** To run the whole suite as a separate macOS account, run
+it through `ae-a8n`:
+
+```bash
+ae-a8n test --user <helper-account> -- npx ae-test specs/
+```
+
+The suite then runs in that account's session; ae-test's own ownership rule is
+unchanged (it still only drives an After Effects it starts), and
+`report.json` records the uid and the GUI session's audit id it ran under, so
+the evidence says which account produced it. Machine setup for the helper
+account is `ae-a8n setup`'s job, not this package's.
+
 **Snapshots** compare the SHA-256 of the rendered PNG bytes: exact, no
 tolerance. Baselines are written by `--update-snapshots` to
 `<results-dir>/__snapshots__/<test id>--<name>.sha256`. They live inside the
@@ -141,7 +168,9 @@ updateSnapshots, transport })` resolves to a `RunSummary`; `formatRun` and
 
 ```text
 .ae-test-results/
-  report.json                       every result: status, duration, failure, artifacts, cleanup
+  report.json                       every result: status, duration, failure, artifacts, cleanup,
+                                    and the session it ran against (uid, audit session id, host
+                                    version, declared extension methods, fixture SHA-256s)
   __snapshots__/                    baselines (sha256)
   <test id>/
     trace.jsonl                     ae-a8n's record of every operation (op, status, durationMs, args, result/error)

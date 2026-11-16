@@ -25,6 +25,8 @@ Options:
   --timeout <ms>          Per-test budget (default: 60000)
   --grep <substring>      Only run tests whose title contains this
   --update-snapshots      Record snapshot baselines instead of comparing
+  --host-script <file>    Host script built by "ae-a8n extension build", so a
+                          project's own static host methods can be called
   --fake-host             Run against the in-repo fake After Effects host
                           instead of a real installation
   -h, --help              Show this message
@@ -36,6 +38,7 @@ type CliOptions = {
   timeoutMs?: number;
   grep?: string;
   updateSnapshots?: boolean;
+  hostScript?: string;
   fakeHost?: boolean;
 };
 
@@ -93,6 +96,12 @@ function parse(argv: readonly string[]): Parsed {
         options.grep = value;
         break;
       }
+      case "--host-script": {
+        const value = next();
+        if (value === undefined) return { files, options, error: "--host-script needs a value" };
+        options.hostScript = value;
+        break;
+      }
       default:
         if (arg.startsWith("-")) {
           return { files, options, error: `unknown option: ${arg}` };
@@ -137,6 +146,7 @@ async function main(): Promise<number> {
     ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
     ...(options.grep === undefined ? {} : { grep: options.grep }),
     ...(options.updateSnapshots === undefined ? {} : { updateSnapshots: options.updateSnapshots }),
+    ...(options.hostScript === undefined ? {} : { hostScript: options.hostScript }),
     ...(transport === undefined ? {} : { transport }),
     onResult: (result) => {
       if (result.status === "failed" || result.status === "timed-out") {

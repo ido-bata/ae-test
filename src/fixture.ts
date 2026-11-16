@@ -7,21 +7,42 @@
  * is the part that gets the care.
  */
 
-import { copyFileSync, mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { copyFileSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 
 import { AfterEffects, type HostTransport } from "@ido-bata/ae-a8n";
 
-import type { Artifact, CleanupOutcome, Fixture, TestInfo } from "./types.js";
+import type {
+  Artifact,
+  CleanupOutcome,
+  Fixture,
+  FixtureDigest,
+  SessionFacts,
+  TestInfo,
+} from "./types.js";
 
-/** After Effects was running before this run started it, or its owner is unclear. */
+/**
+ * After Effects was running before this run started it, or its owner is unclear.
+ *
+ * The two cases are kept apart in `kind`: "attached" means a host was already
+ * running and was left untouched, "unknown" means this run could neither claim
+ * nor rule out the host it found. An operator acts differently on each, so the
+ * distinction travels in the error and into `report.json`, not only the text.
+ */
 export class HostNotOwnedError extends Error {
-  constructor(kind: string, evidence: string) {
+  readonly kind: "attached" | "unknown";
+  readonly evidence: string;
+
+  constructor(kind: "attached" | "unknown", evidence: string) {
     super(
       `After Effects is ${kind === "attached" ? "already running" : "of unknown ownership"} (${evidence}); ` +
         "ae-test only runs against an After Effects it starts. Quit it and run again.",
     );
     this.name = "HostNotOwnedError";
+    this.kind = kind;
+    this.evidence = evidence;
   }
 }
 
@@ -38,6 +59,19 @@ export type FixtureOptions = {
    * installation discovered on this machine.
    */
   readonly transport?: HostTransport;
+  /**
+   * Host script built by `ae-a8n extension build`, declaring this project's
+   * static extension methods. Forwarded to `AfterEffects.launch` unchanged:
+   * the fixture never reads or rewrites it.
+   */
+  readonly hostScript?: string;
+  /** Explicit After Effects installation; forwarded unchanged. */
+  readonly installDir?: string;
+  /**
+   * Environment variables set inside the After Effects process before anything
+   * else runs. Forwarded unchanged; applied only to a host this session owns.
+   */
+  readonly hostEnvironment?: Readonly<Record<string, string>>;
 };
 
 export class TestFixture {
@@ -45,6 +79,8 @@ export class TestFixture {
   readonly #info: TestInfo;
   #session: AfterEffects | undefined;
   readonly #attachments: Artifact[] = [];
+  /** Every project fixture this test resolved, in the order it first did. */
+  readonly #fixtures: FixtureDigest[] = [];
 
   constructor(info: TestInfo, options: FixtureOptions) {
     this.#info = info;
@@ -78,6 +114,15 @@ export class TestFixture {
         ...(this.#options.transport === undefined
           ? {}
           : { transport: this.#options.transport }),
+        ...(this.#options.hostScript === undefined
+          ? {}
+          : { hostScript: this.#options.hostScript }),
+        ...(this.#options.installDir === undefined
+          ? {}
+          : { installDir: this.#options.installDir }),
+        ...(this.#options.hostEnvironment === undefined
+          ? {}
+          : { hostEnvironment: this.#options.hostEnvironment }),
         ...(this.#options.timeoutMs === undefined
           ? {}
           : { timeoutMs: this.#options.timeoutMs }),
@@ -127,10 +172,40 @@ export class TestFixture {
   }
 
   /**
+   * What this test ran against, for `report.json`.
+   *
+   * Every read is guarded: a fact that cannot be measured is `null` (or an
+   * empty list), never an exception that would replace the test's own result.
+   * `uid` is this process's, so inside an isolated session it names the
+   * session's account; `asid` is read from that account's GUI domain.
+   */
+  sessionFacts(session: AfterEffects | undefined): SessionFacts {
+    const uid = typeof process.getuid === "function" ? process.getuid() : null;
+    let ae: SessionFacts["ae"] = null;
+    if (session !== undefined) {
+      try {
+        const info = session.info();
+        ae = { version: info.version, ...(info.build === undefined ? {} : { build: info.build }) };
+      } catch {
+        ae = null;
+      }
+    }
+    return {
+      uid,
+      asid: readAuditSessionId(uid),
+      ae,
+      extensions: declaredExtensions(session),
+      fixtures: [...this.#fixtures],
+    };
+  }
+
+  /**
    * Resolves a project fixture by name and asserts it exists.
    *
    * A missing fixture is a setup error, not a test failure — surfacing it as
    * "composition not found" would send the reader after the wrong problem.
+   * The bytes are hashed here, once, so the run records exactly what the test
+   * opened even if the file changes afterwards.
    */
   project(name: string): string {
     const dir = this.#options.projectsDir ?? resolve(process.cwd(), "fixtures");
@@ -143,7 +218,22 @@ export class TestFixture {
           `Available in ${dir}: ${listOrNone(readdirSync(dir))}`,
       );
     }
+    this.#recordFixture(name, path);
     return path;
+  }
+
+  #recordFixture(name: string, path: string): void {
+    if (this.#fixtures.some((fixture) => fixture.path === path)) {
+      return;
+    }
+    let sha256: string | null = null;
+    try {
+      sha256 = createHash("sha256").update(readFileSync(path)).digest("hex");
+    } catch {
+      // Named in the report as unreadable rather than dropped: the test still
+      // used the path, and a digest nobody could take is worth recording.
+    }
+    this.#fixtures.push({ name, path, sha256 });
   }
 
   attach(name: string, contents: string | Uint8Array): Promise<Artifact> {
@@ -186,6 +276,43 @@ export class TestFixture {
 
 function listOrNone(entries: readonly string[]): string {
   return entries.length === 0 ? "(none)" : entries.join(", ");
+}
+
+/**
+ * The audit session id of the GUI session that owns `uid`, or null.
+ *
+ * `launchctl print gui/<uid>` is the only unprivileged source on macOS; the
+ * call is read-only and given a short budget, because this fact is recorded,
+ * not fought for. Anywhere else — or for an account with no GUI session — the
+ * answer is null, which is what the field documents.
+ */
+function readAuditSessionId(uid: number | null): number | null {
+  if (process.platform !== "darwin" || uid === null) {
+    return null;
+  }
+  try {
+    const output = execFileSync("launchctl", ["print", `gui/${uid}`], {
+      encoding: "utf-8",
+      timeout: 5_000,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    const match = /^\s*asid = (\d+)\s*$/m.exec(output);
+    return match?.[1] === undefined ? null : Number(match[1]);
+  } catch {
+    return null;
+  }
+}
+
+/** Static host methods the session's host script declared; [] when it has none. */
+function declaredExtensions(session: AfterEffects | undefined): readonly string[] {
+  if (session === undefined) {
+    return [];
+  }
+  try {
+    return session.extensionMethods();
+  } catch {
+    return [];
+  }
 }
 
 /**

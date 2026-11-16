@@ -34,7 +34,7 @@ export {
 export { SnapshotStore } from "./snapshot.js";
 export type { SnapshotStoreOptions } from "./snapshot.js";
 
-export { TestFixture } from "./fixture.js";
+export { HostNotOwnedError, TestFixture } from "./fixture.js";
 export type { FixtureOptions } from "./fixture.js";
 
 export { run, loadTestFiles, countByStatus, hasFailures, DEFAULT_RESULTS_DIR } from "./runner.js";
@@ -51,7 +51,9 @@ export {
 export type {
   Artifact,
   Fixture,
+  FixtureDigest,
   RunSummary,
+  SessionFacts,
   TestContext,
   TestDeclaration,
   TestFailure,
@@ -61,4 +63,4 @@ export type {
   TestStatus,
 } from "./types.js";
 
-export const AE_TEST_VERSION = "0.1.0-alpha.0";
+export const AE_TEST_VERSION = "0.1.0-alpha.1";
