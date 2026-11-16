@@ -28,8 +28,10 @@ npm install --save-exact @ido-bata/ae-a8n@<version>
 npm run build && npm run check
 ```
 
-Then run the real-host suite on the Mac before merging, since the fake host
-cannot show what changed in After Effects itself.
+Then run `npm run check` and `npm run check:package`. Real After Effects
+verification is separate evidence recorded in `docs/verification.md`; it is
+not a routine merge gate for an `ae-a8n` pin bump unless the change alters
+After Effects-facing behavior that the fake host cannot represent.
 
 ## Trying an unpublished ae-a8n
 
