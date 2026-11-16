@@ -8,3 +8,6 @@ coverage/
 
 # test/readme.test.ts scratch, removed after each run
 .readme-examples-*/
+
+# per-worktree lifecycle state (see scripts/worktree/)
+.worktree.env
