@@ -143,9 +143,10 @@ await expectFrame(frame).toMatchSnapshot("main-frame-0", {
 });
 ```
 
-At least one of `maxDiffPixels` / `maxDiffPixelRatio` bounds the result;
-`threshold` alone still requires every pixel to match exactly. A digest
-mismatch without these options keeps the old exact-hash failure. A digest-only
+With no `maxDiffPixels` / `maxDiffPixelRatio` budget, any pixel outside
+`threshold` fails; `threshold` is a per-channel tolerance, not an
+exact-byte comparison. A digest mismatch without these options keeps the
+old exact-hash failure. A digest-only
 baseline written before image baselines existed needs one
 `--update-snapshots` run before tolerances can be used.
 

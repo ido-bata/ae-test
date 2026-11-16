@@ -64,16 +64,6 @@ export function comparePngFiles(
   );
 }
 
-export function comparePngBuffers(
-  expected: Buffer,
-  actual: Buffer,
-  options: ImageComparisonOptions = {},
-): Omit<ImageDifference, "expectedPath" | "actualPath"> {
-  const diff = compareDecodedPngs(decodeBuffer(expected), decodeBuffer(actual), { options });
-  const { expectedPath: _expectedPath, actualPath: _actualPath, ...rest } = diff;
-  return rest;
-}
-
 export function formatImageDifference(
   difference: ImageDifference,
   options: ImageComparisonOptions = {},
@@ -82,15 +72,13 @@ export function formatImageDifference(
   const maxDiffPixels = options.maxDiffPixels ?? "unbounded";
   const maxDiffPixelRatio = options.maxDiffPixelRatio ?? "unbounded";
   const lines = [
+    `  renders: ${difference.expectedPath} -> ${difference.actualPath}`,
     `  pixels: ${difference.differentPixels}/${difference.totalPixels} differ ` +
       `(${(difference.differentPixelRatio * 100).toFixed(4)}%), ` +
       `max channel delta ${difference.maxChannelDelta}`,
     `  tolerance: threshold ${threshold}, maxDiffPixels ${maxDiffPixels}, ` +
       `maxDiffPixelRatio ${maxDiffPixelRatio}`,
   ];
-  if (difference.expectedPath !== "" || difference.actualPath !== "") {
-    lines.splice(2, 0, `  renders: ${difference.expectedPath} -> ${difference.actualPath}`);
-  }
   const first = difference.firstDifference;
   if (first !== undefined) {
     lines.push(
@@ -104,10 +92,10 @@ export function formatImageDifference(
 function compareDecodedPngs(
   expected: DecodedPng,
   actual: DecodedPng,
-  context: { expectedPath?: string; actualPath?: string; options: ImageComparisonOptions },
+  context: { expectedPath: string; actualPath: string; options: ImageComparisonOptions },
 ): ImageDifference {
   const { threshold = 0, maxDiffPixels, maxDiffPixelRatio } = context.options;
-  validateOptions(threshold, maxDiffPixels ?? 0, maxDiffPixelRatio ?? 0);
+  validateOptions(context.options);
 
   if (expected.width !== actual.width || expected.height !== actual.height) {
     throw new ImageComparisonError(
@@ -161,8 +149,8 @@ function compareDecodedPngs(
       : (maxDiffPixels === undefined || differentPixels <= maxDiffPixels) &&
         (maxDiffPixelRatio === undefined || differentPixelRatio <= maxDiffPixelRatio);
   return {
-    expectedPath: context.expectedPath ?? "",
-    actualPath: context.actualPath ?? "",
+    expectedPath: context.expectedPath,
+    actualPath: context.actualPath,
     width: expected.width,
     height: expected.height,
     totalPixels,
@@ -189,20 +177,20 @@ function decodeBuffer(bytes: Buffer): DecodedPng {
   return { width: png.width, height: png.height, data: png.data };
 }
 
-function validateOptions(
-  threshold: number,
-  maxDiffPixels: number,
-  maxDiffPixelRatio: number,
-): void {
+function validateOptions(options: ImageComparisonOptions): void {
+  const { threshold = 0, maxDiffPixels, maxDiffPixelRatio } = options;
   if (!Number.isFinite(threshold) || threshold < 0 || threshold > 255) {
     throw new ImageComparisonError(`threshold must be a number from 0 to 255, received ${threshold}`);
   }
-  if (!Number.isInteger(maxDiffPixels) || maxDiffPixels < 0) {
+  if (maxDiffPixels !== undefined && (!Number.isInteger(maxDiffPixels) || maxDiffPixels < 0)) {
     throw new ImageComparisonError(
       `maxDiffPixels must be a non-negative integer, received ${maxDiffPixels}`,
     );
   }
-  if (!Number.isFinite(maxDiffPixelRatio) || maxDiffPixelRatio < 0 || maxDiffPixelRatio > 1) {
+  if (
+    maxDiffPixelRatio !== undefined &&
+    (!Number.isFinite(maxDiffPixelRatio) || maxDiffPixelRatio < 0 || maxDiffPixelRatio > 1)
+  ) {
     throw new ImageComparisonError(
       `maxDiffPixelRatio must be a number from 0 to 1, received ${maxDiffPixelRatio}`,
     );

@@ -131,13 +131,16 @@ export class SnapshotStore {
   }
 
   #pathFor(name: string): string {
-    const safe = name.replace(/[^a-zA-Z0-9._-]+/g, "-");
-    return join(this.#dir, `${this.#testId}--${safe}.sha256`);
+    return join(this.#dir, `${this.#baseFor(name)}.sha256`);
   }
 
   #pngPathFor(name: string): string {
+    return join(this.#dir, `${this.#baseFor(name)}.png`);
+  }
+
+  #baseFor(name: string): string {
     const safe = name.replace(/[^a-zA-Z0-9._-]+/g, "-");
-    return join(this.#dir, `${this.#testId}--${safe}.png`);
+    return `${this.#testId}--${safe}`;
   }
 
   #write(path: string, digest: string, name: string, frame: RenderedFrame): void {

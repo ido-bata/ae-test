@@ -93,6 +93,10 @@ describe("rendered frame image comparison", () => {
       maxDiffPixelRatio: 0.3,
     });
     await assertion.toMatchFrame(frame(expectedPath), { threshold: 20, maxDiffPixels: 1 });
+    await assertion.toMatchFrame(frame(expectedPath), { threshold: 20 });
+    await expect(assertion.toMatchFrame(frame(expectedPath), { threshold: 10 })).rejects.toThrow(
+      /first difference at \(1, 1\)/,
+    );
   });
 
   it("rejects frames with different dimensions instead of comparing offsets", async () => {
