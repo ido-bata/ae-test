@@ -94,10 +94,22 @@ With `--conformance` (and optionally `--capability-catalog <catalog.json>`),
 the run writes `conformance.json`: one immutable record per test with the
 capability IDs, platform, AE version, artifact SHA-256s, session facts and a
 classification. A fake-host pass is `fake-only`; only a pass on a real host
-is `real-host-verified`. `unsupported`, `refused`, `unknown`, `blocked` and
-`not-run` stay distinct and never count as verified coverage; a passing test
-that only proves one of those records `UNKNOWN`, not `PASS`. When
-`conformance.json` is not ok, the CLI exits 1 even if every test passed.
+is `real-host-verified` — and only when a session actually ran: a pass with
+no host contact records `UNKNOWN`. `unsupported`, `refused`, `unknown`,
+`blocked` and `not-run` stay distinct and never count as verified coverage;
+a passing test that only proves one of those records `UNKNOWN`, not `PASS`.
+When `conformance.json` is not ok, the CLI exits 1 even if every test
+passed — including when a `--grep`/`--capability` filter selected zero
+tests, which is never a green run.
+
+When a catalog is supplied, its `compatibility` rows are honoured: a test
+whose every declared capability is incompatible with this OS/arch is
+reported `blocked` before launch, and each record flags capabilities that
+are incompatible with the observed AE version or whose compatibility could
+not be evaluated. `--plugin-binary <path>` and `--sdk-binary <path>`
+(repeatable) cite plugin/SDK binaries whose SHA-256 lands in the report for
+the consumer's same-bytes check, and `summary.matrix` groups the records by
+observed OS × AE version.
 
 Use **match names** (`ADBE Gaussian Blur 2`, `ADBE Gaussian Blur 2-0001`), not
 display names: display names are localised. ae-a8n's skill and README cover
@@ -199,10 +211,13 @@ ae-test <files...> [options]
   --source-sha <sha>      git SHA of the code under test for the evidence record
   --run-id <id>           conformance run id (default: generated)
   --conformance-out <path>  write conformance evidence to this path instead
+  --plugin-binary <path>  plugin binary under test, hashed into the evidence (repeatable)
+  --sdk-binary <path>     SDK build artifact under test, hashed into the evidence (repeatable)
 ```
 
-Exit codes: **0** everything passed or was skipped, **1** something failed or
-timed out, **2** the run never happened (no files, a bad flag, a crash before
+Exit codes: **0** everything passed or was skipped, **1** something failed,
+timed out, or the run proved nothing (empty selection, not-ok conformance
+evidence), **2** the run never happened (no files, a bad flag, a crash before
 the first test). The fake host is never used unless `--fake-host` is given;
 it comes from `@ido-bata/ae-a8n/testing`, which ae-a8n marks unstable.
 
@@ -212,8 +227,9 @@ capabilityFilter, updateSnapshots, transport, conformance })` resolves to a
 and returns. `capabilityFilter` keeps only tests that declare at least one of
 the listed capability IDs.
 `conformance` is `{ host: "fake" | "real", catalogPath?, sourceSha?, runId?,
-outPath? }`; `buildConformanceReport` / `writeConformanceReport` are also
-exported for consumers that assemble their own summary.
+outPath?, pluginBinaries?, sdkBinaries? }`; `buildConformanceReport` /
+`writeConformanceReport` are also exported for consumers that assemble
+their own summary.
 
 ## Getting the results
 

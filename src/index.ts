@@ -37,6 +37,8 @@ export type { ImageComparisonOptions, ImageDifference } from "./image.js";
 
 export {
   buildConformanceReport,
+  environmentBlockReason,
+  evaluateCompatibility,
   loadCapabilityCatalog,
   writeConformanceReport,
   ConformanceError,
@@ -46,11 +48,15 @@ export {
 } from "./conformance.js";
 export type {
   CapabilityCatalogIndex,
+  CompatibilityEnvironment,
+  CompatibilityVerdict,
   ConformanceArtifactHash,
+  ConformanceBinaryHash,
   ConformanceCatalogSummary,
   ConformanceClassification,
   ConformanceDiagnostic,
   ConformanceHost,
+  ConformanceMatrixCell,
   ConformanceRecord,
   ConformanceReport,
   ConformanceResult,

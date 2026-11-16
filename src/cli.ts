@@ -36,6 +36,10 @@ Options:
   --source-sha <sha>      Git SHA of the code under test for the evidence record
   --run-id <id>           Conformance run id (default: generated)
   --conformance-out <path>  Write conformance evidence here instead
+  --plugin-binary <path>  Plugin binary under test; hashed into the evidence
+                          (repeatable)
+  --sdk-binary <path>     SDK build artifact under test; hashed into the
+                          evidence (repeatable)
   -h, --help              Show this message
 `;
 
@@ -53,6 +57,8 @@ type CliOptions = {
   sourceSha?: string;
   runId?: string;
   conformanceOut?: string;
+  pluginBinaries?: string[];
+  sdkBinaries?: string[];
 };
 
 type Parsed = {
@@ -148,6 +154,18 @@ function parse(argv: readonly string[]): Parsed {
         options.conformanceOut = value;
         break;
       }
+      case "--plugin-binary": {
+        const value = next();
+        if (value === undefined) return { files, options, error: "--plugin-binary needs a value" };
+        (options.pluginBinaries ??= []).push(value);
+        break;
+      }
+      case "--sdk-binary": {
+        const value = next();
+        if (value === undefined) return { files, options, error: "--sdk-binary needs a value" };
+        (options.sdkBinaries ??= []).push(value);
+        break;
+      }
       default:
         if (arg.startsWith("-")) {
           return { files, options, error: `unknown option: ${arg}` };
@@ -184,7 +202,9 @@ async function main(): Promise<number> {
     (options.capabilityCatalog !== undefined ||
       options.sourceSha !== undefined ||
       options.runId !== undefined ||
-      options.conformanceOut !== undefined)
+      options.conformanceOut !== undefined ||
+      options.pluginBinaries !== undefined ||
+      options.sdkBinaries !== undefined)
   ) {
     process.stderr.write("conformance options require --conformance\n\n" + USAGE);
     return 2;
@@ -219,6 +239,12 @@ async function main(): Promise<number> {
             ...(options.conformanceOut === undefined
               ? {}
               : { outPath: options.conformanceOut }),
+            ...(options.pluginBinaries === undefined
+              ? {}
+              : { pluginBinaries: options.pluginBinaries }),
+            ...(options.sdkBinaries === undefined
+              ? {}
+              : { sdkBinaries: options.sdkBinaries }),
           },
         }
       : {}),

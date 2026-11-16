@@ -16,6 +16,7 @@ import type { AfterEffects, HostTransport } from "@ido-bata/ae-a8n";
 
 import { expect, expectFrame } from "./expect.js";
 import {
+  environmentBlockReason,
   loadCapabilityCatalog,
   writeConformanceReport,
   type CapabilityCatalogIndex,
@@ -131,20 +132,21 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   // worse, let it pass against the wrong state.
   let hostUnknown: string | undefined;
   for (const declaration of declared) {
-    if (hostUnknown !== undefined && !declaration.skip) {
-      const blocked: TestResult = {
-        id: declaration.id,
-        title: declaration.title,
-        file: declaration.file,
-        status: "blocked",
-        durationMs: 0,
-        artifacts: [],
-        blockedReason: hostUnknown,
-        capabilities: declaration.capabilities,
-        ...(declaration.conformance === undefined
-          ? {}
-          : { conformance: declaration.conformance }),
-      };
+    // A catalog can declare a capability unsupported on this OS/arch. When
+    // every capability the test claims is incompatible here, running it
+    // would only manufacture a failure (or worse, a pass) against an
+    // environment the catalog says cannot work — report it blocked instead.
+    const environmentBlock =
+      conformanceCatalog === undefined || declaration.skip
+        ? undefined
+        : environmentBlockReason(declaration.capabilities, conformanceCatalog, {
+            os: process.platform,
+            arch: process.arch,
+          });
+    const blockReason =
+      environmentBlock ?? (hostUnknown !== undefined && !declaration.skip ? hostUnknown : undefined);
+    if (blockReason !== undefined) {
+      const blocked = blockedResult(declaration, blockReason);
       results.push(blocked);
       options.onResult?.(blocked);
       continue;
@@ -177,6 +179,8 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     durationMs: Date.now() - began,
     resultsDir,
     reportPath,
+    // Filters that matched nothing must not read as a green run.
+    ...(declared.length === 0 ? { noTestsSelected: true } : {}),
   };
   const conformance =
     options.conformance === undefined
@@ -190,6 +194,21 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   };
   writeFileSync(reportPath, `${JSON.stringify(summary, null, 2)}\n`, "utf-8");
   return summary;
+}
+
+/** A test kept out of the run, with the reason it was kept out. */
+function blockedResult(declaration: TestDeclaration, reason: string): TestResult {
+  return {
+    id: declaration.id,
+    title: declaration.title,
+    file: declaration.file,
+    status: "blocked",
+    durationMs: 0,
+    artifacts: [],
+    blockedReason: reason,
+    capabilities: declaration.capabilities,
+    ...(declaration.conformance === undefined ? {} : { conformance: declaration.conformance }),
+  };
 }
 
 type OneTestOptions = {

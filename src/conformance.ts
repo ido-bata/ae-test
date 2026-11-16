@@ -10,7 +10,7 @@
 
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { release } from "node:os";
 
 import type {
@@ -59,6 +59,14 @@ export type ConformanceRunOptions = {
   /** Injectable for tests; defaults to now. */
   readonly recordedAt?: string;
   readonly packageVersion?: string;
+  /**
+   * Plugin binaries under test, as filesystem paths. Each is hashed into the
+   * report so a consumer can apply the same-bytes rule; a path that cannot be
+   * read is recorded with a null hash, never dropped.
+   */
+  readonly pluginBinaries?: readonly string[];
+  /** SDK build artifacts under test, same hashing rule as `pluginBinaries`. */
+  readonly sdkBinaries?: readonly string[];
 };
 
 export type ConformanceDiagnostic = {
@@ -75,6 +83,28 @@ export type ConformanceArtifactHash = {
   readonly kind: TestResult["artifacts"][number]["kind"];
   readonly bytes: number;
   readonly sha256: string | null;
+};
+
+/**
+ * A plugin or SDK binary cited as evidence. `bytes`/`sha256` are null when the
+ * file could not be read — the citation stays, the hash honestly absent.
+ */
+export type ConformanceBinaryHash = {
+  readonly name: string;
+  readonly path: string;
+  readonly bytes: number | null;
+  readonly sha256: string | null;
+};
+
+/** One cell of the os × AE-version acceptance matrix. */
+export type ConformanceMatrixCell = {
+  readonly os: string;
+  readonly osVersion: string;
+  readonly arch: string;
+  /** Observed AE version, or null when no session reported one. */
+  readonly aeVersion: string | null;
+  readonly total: number;
+  readonly byResult: Record<ConformanceResult, number>;
 };
 
 export type ConformanceRecord = {
@@ -159,6 +189,17 @@ export type ConformanceReport = {
     readonly total: number;
     readonly byResult: Record<ConformanceResult, number>;
     readonly byClassification: Record<ConformanceClassification, number>;
+    /** Records grouped by observed os × AE version — the acceptance matrix. */
+    readonly matrix: readonly ConformanceMatrixCell[];
+  };
+  /**
+   * Plugin and SDK binaries the run cites as evidence, hashed for the
+   * same-bytes rule. Empty lists mean none were supplied — which is itself
+   * the honest answer for a run that tested no plugin binary.
+   */
+  readonly binaries: {
+    readonly plugin: readonly ConformanceBinaryHash[];
+    readonly sdk: readonly ConformanceBinaryHash[];
   };
   readonly ok: boolean;
   readonly diagnostics: readonly ConformanceDiagnostic[];
@@ -281,6 +322,21 @@ export function buildConformanceReport(
     });
   }
 
+  // An empty selection is not evidence: a filter that matched nothing must
+  // not read as a green run.
+  if (records.length === 0) {
+    diagnostics.push({
+      severity: "error",
+      code: "no-tests-selected",
+      detail: "the run selected no tests; an empty selection proves nothing",
+    });
+  }
+
+  const binaries = {
+    plugin: hashBinaries(options.pluginBinaries ?? [], diagnostics),
+    sdk: hashBinaries(options.sdkBinaries ?? [], diagnostics),
+  };
+
   const ok =
     summary.results.every((result) => result.status === "passed" || result.status === "skipped") &&
     diagnostics.every((diagnostic) => diagnostic.severity !== "error");
@@ -314,7 +370,9 @@ export function buildConformanceReport(
       total: records.length,
       byResult,
       byClassification,
+      matrix: matrixCells(records),
     },
+    binaries,
     ok,
     diagnostics,
     records,
@@ -368,6 +426,55 @@ function buildRecord(
   ) {
     classification = "unknown";
     conformanceResult = "UNKNOWN";
+  }
+
+  // A pass that never launched a session is not host evidence: it cannot be
+  // fake-only or real-host-verified no matter which host the run targeted.
+  if (
+    result.status === "passed" &&
+    (result.conformance ?? "pass") === "pass" &&
+    result.session === undefined
+  ) {
+    diagnostics.push({
+      severity: "error",
+      code: "session-not-launched",
+      detail:
+        "test passed without launching a session; a pass with no host contact cannot be conformance evidence",
+    });
+  }
+
+  // Catalog compatibility is checked against what the record actually
+  // observed: this OS, this arch, this AE version/build. Dimensions the
+  // catalog leaves open or the run could not measure stay silent. Skipped
+  // tests are not evidence, so they carry no compatibility claim either.
+  if (context.catalog !== undefined && result.status !== "skipped") {
+    for (const capabilityId of result.capabilities) {
+      const row = context.catalog.records.get(capabilityId);
+      if (row === undefined) {
+        continue;
+      }
+      const compatibility = evaluateCompatibility(row, {
+        os: context.platform.os,
+        arch: context.platform.arch,
+        aeVersion: result.session?.ae?.version ?? null,
+        aeBuild: result.session?.ae?.build ?? null,
+      });
+      if (compatibility.verdict === "incompatible") {
+        diagnostics.push({
+          severity: "error",
+          code: "environment-incompatible",
+          capabilityId,
+          detail: `capability ${capabilityId} is not compatible with this environment: ${compatibility.reasons.join("; ")}`,
+        });
+      } else if (compatibility.verdict === "unknown") {
+        diagnostics.push({
+          severity: "warning",
+          code: "environment-unverified",
+          capabilityId,
+          detail: `capability ${capabilityId} compatibility could not be fully evaluated: ${compatibility.reasons.join("; ")}`,
+        });
+      }
+    }
   }
 
   const expectation = result.conformance ?? "pass";
@@ -469,6 +576,11 @@ function classify(
       return { result: "FAIL", classification: "failed" };
     case "passed": {
       const expectation = result.conformance ?? "pass";
+      // Promotable classes require a session that actually ran: a pass with
+      // no host contact is honest non-proof, not fake-only or real-host.
+      if (expectation === "pass" && result.session === undefined) {
+        return { result: "UNKNOWN", classification: "unknown" };
+      }
       const classification: ConformanceClassification =
         expectation === "pass"
           ? host === "fake"
@@ -554,4 +666,197 @@ function artifactHashes(result: TestResult): ConformanceArtifactHash[] {
 
 function emptyCounts<T extends string>(keys: readonly T[]): Record<T, number> {
   return Object.fromEntries(keys.map((key) => [key, 0])) as Record<T, number>;
+}
+
+/** What the runner knows about the environment a capability would run in. */
+export type CompatibilityEnvironment = {
+  readonly os: string;
+  readonly arch: string;
+  /** Observed AE version; null/undefined when no session reported one. */
+  readonly aeVersion?: string | null;
+  /** Observed AE build number, same caveat. */
+  readonly aeBuild?: string | null;
+};
+
+export type CompatibilityVerdict = {
+  readonly verdict: "compatible" | "incompatible" | "unknown";
+  readonly reasons: readonly string[];
+};
+
+/**
+ * Evaluates one catalog row's `compatibility` block against an environment.
+ *
+ * `os`, `architectures`, `aeVersions` and `aeBuilds` are hard checks when the
+ * catalog supplies them; `sdkVersions`, `requiredPlugins` and
+ * `requiredPermissions` cannot be verified from here and only ever produce
+ * `unknown`, never `incompatible`. A dimension the environment cannot supply
+ * (no observed AE version) is `unknown`, not a failure — absence of evidence
+ * is not evidence of incompatibility.
+ */
+export function evaluateCompatibility(
+  row: unknown,
+  env: CompatibilityEnvironment,
+): CompatibilityVerdict {
+  const compatibility = (row as { compatibility?: unknown }).compatibility;
+  if (typeof compatibility !== "object" || compatibility === null) {
+    return { verdict: "compatible", reasons: [] };
+  }
+  const compat = compatibility as Record<string, unknown>;
+  const incompatible: string[] = [];
+  const unknown: string[] = [];
+
+  const listCheck = (
+    field: string,
+    observed: string | null | undefined,
+    label: string,
+  ): void => {
+    const values = compat[field];
+    if (!Array.isArray(values) || values.length === 0) {
+      return;
+    }
+    const allowed = values.filter((value): value is string => typeof value === "string");
+    if (allowed.length === 0) {
+      return;
+    }
+    if (observed === null || observed === undefined || observed.length === 0) {
+      unknown.push(`${label} not observed`);
+      return;
+    }
+    const matched =
+      field === "os" || field === "architectures"
+        ? allowed.includes(observed)
+        : allowed.some((pattern) => versionPatternMatches(pattern, observed));
+    if (!matched) {
+      incompatible.push(`${label} ${observed} is not in [${allowed.join(", ")}]`);
+    }
+  };
+
+  listCheck("os", env.os, "os");
+  listCheck("architectures", env.arch, "arch");
+  listCheck("aeVersions", env.aeVersion, "ae version");
+  listCheck("aeBuilds", env.aeBuild, "ae build");
+
+  for (const field of ["sdkVersions", "requiredPlugins", "requiredPermissions"] as const) {
+    const values = compat[field];
+    if (Array.isArray(values) && values.length > 0) {
+      unknown.push(`${field} cannot be verified locally`);
+    }
+  }
+
+  if (incompatible.length > 0) {
+    return { verdict: "incompatible", reasons: incompatible };
+  }
+  if (unknown.length > 0) {
+    return { verdict: "unknown", reasons: unknown };
+  }
+  return { verdict: "compatible", reasons: [] };
+}
+
+/**
+ * Dot-separated version pattern with `x`/`*` wildcards; the pattern matches a
+ * prefix of the version, so `26.x` covers `26.0.0` and `26.5` covers `26.5.89`.
+ */
+function versionPatternMatches(pattern: string, version: string): boolean {
+  const expected = pattern.trim().split(".");
+  const actual = version.trim().split(".");
+  if (expected.length > actual.length) {
+    return false;
+  }
+  return expected.every(
+    (segment, index) =>
+      segment === "x" || segment === "X" || segment === "*" || segment === actual[index],
+  );
+}
+
+/**
+ * Whether a declaration should be kept out of this environment entirely:
+ * every catalog-known capability it declares is hard-incompatible here.
+ * Unknown catalog rows and unevaluable dimensions never block a run — they
+ * surface as diagnostics on the records instead.
+ */
+export function environmentBlockReason(
+  capabilityIds: readonly string[],
+  catalog: CapabilityCatalogIndex,
+  env: CompatibilityEnvironment,
+): string | undefined {
+  if (capabilityIds.length === 0) {
+    return undefined;
+  }
+  const known = capabilityIds
+    .map((id) => catalog.records.get(id))
+    .filter((row): row is NonNullable<typeof row> => row !== undefined);
+  if (known.length === 0) {
+    return undefined;
+  }
+  const verdicts = known.map((row) => evaluateCompatibility(row, env));
+  if (!verdicts.every((verdict) => verdict.verdict === "incompatible")) {
+    return undefined;
+  }
+  const reasons = [...new Set(verdicts.flatMap((verdict) => verdict.reasons))];
+  return `no declared capability is compatible with this environment (${env.os}/${env.arch}): ${reasons.join("; ")}`;
+}
+
+function hashBinaries(
+  paths: readonly string[],
+  diagnostics: ConformanceDiagnostic[],
+): ConformanceBinaryHash[] {
+  return paths.map((path) => {
+    const absolute = resolve(path);
+    const entry: ConformanceBinaryHash = {
+      name: basename(absolute),
+      path: absolute,
+      bytes: null,
+      sha256: null,
+    };
+    try {
+      const bytes = readFileSync(absolute);
+      return {
+        ...entry,
+        bytes: bytes.byteLength,
+        sha256: createHash("sha256").update(bytes).digest("hex"),
+      };
+    } catch {
+      diagnostics.push({
+        severity: "warning",
+        code: "binary-unreadable",
+        detail: `binary ${absolute} could not be read; its hash is recorded as null`,
+      });
+      return entry;
+    }
+  });
+}
+
+function matrixCells(records: readonly ConformanceRecord[]): ConformanceMatrixCell[] {
+  const cells = new Map<
+    string,
+    {
+      os: string;
+      osVersion: string;
+      arch: string;
+      aeVersion: string | null;
+      total: number;
+      byResult: Record<ConformanceResult, number>;
+    }
+  >();
+  for (const record of records) {
+    const aeVersion = record.aeVersion?.version ?? null;
+    const key = `${record.platform.os}${record.platform.osVersion}${record.platform.arch}${aeVersion ?? ""}`;
+    let cell = cells.get(key);
+    if (cell === undefined) {
+      cell = {
+        os: record.platform.os,
+        osVersion: record.platform.osVersion,
+        arch: record.platform.arch,
+        aeVersion,
+        total: 0,
+        byResult: emptyCounts(RESULT_ORDER),
+      };
+      cells.set(key, cell);
+    }
+    cell.total += 1;
+    cell.byResult[record.result] += 1;
+  }
+  return [...cells.values()].sort((a, b) =>
+    `${a.os}/${a.aeVersion ?? ""}`.localeCompare(`${b.os}/${b.aeVersion ?? ""}`),
+  );
 }

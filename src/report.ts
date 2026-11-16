@@ -74,6 +74,7 @@ export function formatSummary(summary: RunSummary): string {
   return [
     "",
     `${parts.join(", ")} in ${summary.durationMs}ms`,
+    ...(summary.noTestsSelected === true ? ["no tests selected"] : []),
     `report: ${summary.reportPath}`,
     ...(summary.conformancePath === undefined
       ? []
@@ -99,7 +100,11 @@ export function formatRun(summary: RunSummary): string {
 }
 
 export function exitCodeFor(summary: RunSummary): number {
-  return hasFailures(summary.results) || summary.conformanceOk === false ? 1 : 0;
+  return hasFailures(summary.results) ||
+    summary.conformanceOk === false ||
+    summary.noTestsSelected === true
+    ? 1
+    : 0;
 }
 
 function indent(lines: readonly string[], prefix: string): string[] {
