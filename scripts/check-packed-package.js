@@ -109,11 +109,108 @@ test("fails on purpose", async ({ expect }) => { expect(1).toBe(2); });
     }),
   );
 
+  // The packed types must compile for a consumer: every public name and the
+  // shapes specs rely on, imported by package name exactly as a user would.
+  writeFileSync(
+    join(project, "types-check.ts"),
+    `import {
+  AE_TEST_VERSION, AssertionError, AsyncExpectation, CAPABILITY_CATALOG_SCHEMA,
+  CONFIG_FILE_NAME, CONFORMANCE_RECORD_VERSION, CONFORMANCE_REPORT_SCHEMA,
+  ConfigError, ConformanceError, DEFAULT_BASELINE_DIR, DEFAULT_RESULTS_DIR,
+  DEFAULT_SPEC_PATTERNS, DEFAULT_TIMEOUT_MS, HostNotOwnedError, SnapshotStore,
+  TestFixture, buildConformanceReport, clearRegistry, countByStatus, discoverSpecs,
+  environmentBlockReason, evaluateCompatibility, exitCodeFor, expect, expectFrame,
+  findConfigFile, formatFailure, formatResultLine, formatRun, formatSummary,
+  hasFailures, hostProvenance, loadCapabilityCatalog, loadConfigFile, loadTestFiles,
+  registeredTests, run, setDeclaringFile, skip, test, toMatchObject,
+  writeConformanceReport,
+} from "@ido-bata/ae-test";
+import type {
+  AeTestConfig, AeTestHost, Artifact, CapabilityCatalogIndex, CompatibilityEnvironment,
+  CompatibilityVerdict, ConformanceArtifactHash, ConformanceBinaryHash,
+  ConformanceCatalogSummary, ConformanceClassification, ConformanceDiagnostic,
+  ConformanceExpectation, ConformanceHost, ConformanceMatrixCell, ConformanceRecord,
+  ConformanceReport, ConformanceResult, ConformanceRunOptions, ConformanceVerification,
+  Fixture, FixtureDigest, FixtureOptions, HostProvenance, ImageComparisonOptions,
+  ImageDifference, LoadedConfig, RenderedFrame, RunOptions, RunSummary, SessionFacts,
+  SnapshotStoreOptions, TestContext, TestDeclaration, TestFailure, TestFn, TestInfo,
+  TestOptions, TestResult, TestStatus,
+} from "@ido-bata/ae-test";
+
+const options: RunOptions = { files: ["spec.mjs"] };
+const config: AeTestConfig = { host: "fake", specs: ["specs/**/*.spec.mjs"] };
+const loaded: LoadedConfig | undefined = undefined;
+void AE_TEST_VERSION;
+void AssertionError; void AsyncExpectation; void CAPABILITY_CATALOG_SCHEMA;
+void CONFIG_FILE_NAME; void CONFORMANCE_RECORD_VERSION; void CONFORMANCE_REPORT_SCHEMA;
+void ConfigError; void ConformanceError; void DEFAULT_BASELINE_DIR;
+void DEFAULT_RESULTS_DIR; void DEFAULT_SPEC_PATTERNS; void DEFAULT_TIMEOUT_MS;
+void HostNotOwnedError; void SnapshotStore; void TestFixture;
+void buildConformanceReport; void clearRegistry; void countByStatus; void discoverSpecs;
+void environmentBlockReason; void evaluateCompatibility; void exitCodeFor; void expect;
+void expectFrame; void findConfigFile; void formatFailure; void formatResultLine;
+void formatRun; void formatSummary; void hasFailures; void hostProvenance;
+void loadCapabilityCatalog; void loadConfigFile; void loadTestFiles;
+void registeredTests; void run; void setDeclaringFile; void skip; void test;
+void toMatchObject; void writeConformanceReport;
+void options; void config; void loaded;
+`,
+  );
+  const tsc = join(ROOT, "node_modules", ".bin", "tsc");
+  const typecheck = spawnSync(
+    tsc,
+    [
+      "--noEmit",
+      "--strict",
+      "--skipLibCheck",
+      "--module",
+      "nodenext",
+      "--moduleResolution",
+      "nodenext",
+      "--target",
+      "es2022",
+      "types-check.ts",
+    ],
+    { cwd: project, encoding: "utf-8" },
+  );
+  if (typecheck.status !== 0) {
+    fail(`packed types failed to compile for a consumer\n${typecheck.stdout}\n${typecheck.stderr}`);
+  }
+
   const bin = join(project, "node_modules", ".bin", "ae-test");
   /** @param {string[]} args */
   const cli = (args) => spawnSync(bin, args, { cwd: project, encoding: "utf-8" });
   /** @param {string} dir @param {string[]} args */
   const cliIn = (cwd, args) => spawnSync(bin, args, { cwd, encoding: "utf-8" });
+
+  // The programmatic surface works from the installed package too, not only
+  // the CLI: `run()` with an injected fake transport, end to end.
+  writeFileSync(
+    join(project, "api-check.mjs"),
+    `import { run } from "@ido-bata/ae-test";
+import { FakeAfterEffectsTransport } from "@ido-bata/ae-a8n/testing";
+const summary = await run({
+  files: ["passing.spec.mjs"],
+  resultsDir: "results-api",
+  baselineDir: "baselines-api",
+  projectsDir: "fixtures",
+  transport: new FakeAfterEffectsTransport(),
+  updateSnapshots: true,
+});
+if (summary.schema !== "ae-test.report/v1") {
+  console.error("unexpected report schema: " + summary.schema);
+  process.exit(1);
+}
+if (summary.results.length !== 2 || summary.results.some((r) => r.status !== "passed")) {
+  console.error("programmatic run did not pass: " + JSON.stringify(summary.results.map((r) => r.status)));
+  process.exit(1);
+}
+`,
+  );
+  const apiRun = spawnSync(process.execPath, ["api-check.mjs"], { cwd: project, encoding: "utf-8" });
+  if (apiRun.status !== 0) {
+    fail(`programmatic API run exited ${apiRun.status}\n${apiRun.stdout}\n${apiRun.stderr}`);
+  }
 
   const passing = cli([
     "passing.spec.mjs",
@@ -133,11 +230,17 @@ test("fails on purpose", async ({ expect }) => { expect(1).toBe(2); });
   ]);
   if (passing.status !== 0) fail(`passing suite exited ${passing.status}\n${passing.stdout}\n${passing.stderr}`);
   const report = JSON.parse(readFileSync(join(project, "results", "report.json"), "utf-8"));
+  if (report.schema !== "ae-test.report/v1") {
+    fail(`report.json schema is ${JSON.stringify(report.schema)}, expected ae-test.report/v1`);
+  }
   const statuses = report.results.map((/** @type {{ status: string }} */ r) => r.status);
   if (statuses.length !== 2 || statuses.some((/** @type {string} */ s) => s !== "passed")) {
     fail(`passing suite reported ${JSON.stringify(statuses)}`);
   }
   const conformance = JSON.parse(readFileSync(join(project, "results", "conformance.json"), "utf-8"));
+  if (conformance.schema !== "ae-test.conformance/v1") {
+    fail(`conformance.json schema is ${JSON.stringify(conformance.schema)}, expected ae-test.conformance/v1`);
+  }
   if (conformance.ok !== true || conformance.host !== "fake") {
     fail(`conformance report was not an ok fake-host report: ${JSON.stringify(conformance.summary)}`);
   }
@@ -241,6 +344,9 @@ test("two renders diverge", async ({ ae, fixture, expectFrame }) => {
   );
   if (diffJson === undefined) fail("no .diff.json among the diff artifacts");
   const diagnostic = JSON.parse(readFileSync(diffJson.path, "utf-8"));
+  if (diagnostic.schema !== "ae-test.image-diff/v1") {
+    fail(`diff diagnostic schema is ${JSON.stringify(diagnostic.schema)}, expected ae-test.image-diff/v1`);
+  }
   if (diagnostic.difference?.differentPixels <= 0 || diagnostic.options?.threshold !== 0) {
     fail(`unexpected diff diagnostic: ${JSON.stringify(diagnostic)}`);
   }

@@ -167,6 +167,8 @@ export type TestResult = {
 } & TestResultExtras;
 
 export type RunSummary = {
+  /** Schema version of this report shape; see docs/api.md. */
+  readonly schema: "ae-test.report/v1";
   readonly results: readonly TestResult[];
   readonly durationMs: number;
   readonly resultsDir: string;

@@ -16,6 +16,11 @@
   project root. `node_modules` and dot-directories are skipped, results are
   sorted and deduplicated, and an empty selection exits 2.
 - `--real-host` overrides a config `"host": "fake"` for a single run.
+- Public contract fixed ahead of 1.0 (`docs/api.md`): the export surface is
+  pinned by `test/api-surface.test.ts` and a packed-consumer type check;
+  `report.json` gains a `schema: "ae-test.report/v1"` field; semver rules,
+  file-format versions, the ae-a8n pin policy and the supported-environment
+  statement (macOS arm64 + AE 2026 only; Windows unsupported) are documented.
 - Image diff artifacts: a failed pixel comparison (`toMatchSnapshot` with
   tolerances, `toMatchFrame`, including comparisons that cannot run
   pixel-wise such as a size mismatch) now leaves evidence under the test's
