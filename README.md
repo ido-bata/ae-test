@@ -80,6 +80,23 @@ skip("not yet", async () => {});
 | `expect(promise).rejects()` | Resolves to an expectation on the rejection: `toMatchObject({ name: "EntityNotFoundError", kind: "composition" })` |
 | `expectFrame(frame)` | `toHaveSize(w, h)`, `toPath(pattern)`, `await toMatchFrame(other, options?)`, `await toMatchSnapshot(name, options?)` |
 
+**Conformance.** A test can name the ae-devtools capability IDs it is
+evidence for, and the strongest claim it may make:
+
+```js
+test("opens a project", async ({ ae, fixture }) => { … }, {
+  capabilities: ["ae.operation.project.open"],
+  conformance: "pass", // or "unsupported" | "refused" | "unknown"
+});
+```
+
+With `--conformance` (and optionally `--capability-catalog <catalog.json>`),
+the run writes `conformance.json`: one immutable record per test with the
+capability IDs, platform, AE version, artifact SHA-256s, session facts and a
+classification. A fake-host pass is `fake-only`; only a pass on a real host
+is `real-host-verified`. `unsupported`, `refused`, `unknown`, `blocked` and
+`not-run` stay distinct and never count as verified coverage.
+
 Use **match names** (`ADBE Gaussian Blur 2`, `ADBE Gaussian Blur 2-0001`), not
 display names: display names are localised. ae-a8n's skill and README cover
 the After Effects side ([ae-a8n](https://www.npmjs.com/package/@ido-bata/ae-a8n)).
@@ -174,6 +191,11 @@ ae-test <files...> [options]
   --grep <substring>      only tests whose title contains this
   --update-snapshots      record baselines instead of comparing
   --fake-host             use the in-process fake After Effects instead of a real one
+  --conformance           write conformance.json evidence beside report.json
+  --capability-catalog <path>  validate declared capability IDs against ae-devtools catalog.json
+  --source-sha <sha>      git SHA of the code under test for the evidence record
+  --run-id <id>           conformance run id (default: generated)
+  --conformance-out <path>  write conformance evidence to this path instead
 ```
 
 Exit codes: **0** everything passed or was skipped, **1** something failed or
@@ -182,8 +204,11 @@ the first test). The fake host is never used unless `--fake-host` is given;
 it comes from `@ido-bata/ae-a8n/testing`, which ae-a8n marks unstable.
 
 Programmatic use: `run({ files, resultsDir, projectsDir, timeoutMs, grep,
-updateSnapshots, transport })` resolves to a `RunSummary`; `formatRun` and
-`exitCodeFor` turn it into what the CLI prints and returns.
+updateSnapshots, transport, conformance })` resolves to a `RunSummary`;
+`formatRun` and `exitCodeFor` turn it into what the CLI prints and returns.
+`conformance` is `{ host: "fake" | "real", catalogPath?, sourceSha?, runId?,
+outPath? }`; `buildConformanceReport` / `writeConformanceReport` are also
+exported for consumers that assemble their own summary.
 
 ## Getting the results
 
@@ -192,6 +217,7 @@ updateSnapshots, transport })` resolves to a `RunSummary`; `formatRun` and
   report.json                       every result: status, duration, failure, artifacts, cleanup,
                                     and the session it ran against (uid, audit session id, host
                                     version, declared extension methods, fixture SHA-256s)
+  conformance.json                  per-test capability evidence, only with --conformance
   __snapshots__/                    baselines (sha256 digest + PNG)
   <test id>/
     trace.jsonl                     ae-a8n's record of every operation (op, status, durationMs, args, result/error)

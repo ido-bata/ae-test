@@ -38,6 +38,15 @@ ae-a8n `0.1.0-alpha.1` fixes noted below.
   (per-channel delta), `maxDiffPixels` and `maxDiffPixelRatio`; snapshot
   updates now store the baseline PNG beside its SHA-256. Exact hash
   comparison remains the default.
+- Conformance evidence producer for the ae-devtools capability contract:
+  `test(..., { capabilities, conformance })` declares catalog IDs and the
+  strongest claim a spec may make, and `run({ conformance })` /
+  `ae-test --conformance` writes `conformance.json` with per-test records.
+  Classification keeps `unsupported`, `refused`, `unknown`, `blocked`,
+  `not-run`, `failed`, `fake-only` and `real-host-verified` distinct; a
+  fake-host pass never promotes to real-host verification, catalog IDs are
+  checked against a supplied `catalog.json`, and artifact hashes let a
+  consumer recompute the evidence.
 
 ### Changed
 

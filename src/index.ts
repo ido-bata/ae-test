@@ -35,6 +35,29 @@ export { SnapshotStore } from "./snapshot.js";
 export type { SnapshotStoreOptions } from "./snapshot.js";
 export type { ImageComparisonOptions, ImageDifference } from "./image.js";
 
+export {
+  buildConformanceReport,
+  loadCapabilityCatalog,
+  writeConformanceReport,
+  ConformanceError,
+  CAPABILITY_CATALOG_SCHEMA,
+  CONFORMANCE_RECORD_VERSION,
+  CONFORMANCE_REPORT_SCHEMA,
+} from "./conformance.js";
+export type {
+  CapabilityCatalogIndex,
+  ConformanceArtifactHash,
+  ConformanceCatalogSummary,
+  ConformanceClassification,
+  ConformanceDiagnostic,
+  ConformanceHost,
+  ConformanceRecord,
+  ConformanceReport,
+  ConformanceResult,
+  ConformanceRunOptions,
+  ConformanceVerification,
+} from "./conformance.js";
+
 export { HostNotOwnedError, TestFixture } from "./fixture.js";
 export type { FixtureOptions } from "./fixture.js";
 
@@ -51,6 +74,7 @@ export {
 
 export type {
   Artifact,
+  ConformanceExpectation,
   Fixture,
   FixtureDigest,
   RenderedFrame,
@@ -65,4 +89,4 @@ export type {
   TestStatus,
 } from "./types.js";
 
-export const AE_TEST_VERSION = "0.1.0-alpha.1";
+export { AE_TEST_VERSION } from "./version.js";

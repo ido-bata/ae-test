@@ -38,6 +38,14 @@ test("applies a plugin effect and renders a frame", async ({
   expectFrame(frame).toHaveSize(64, 64);
   expectFrame(frame).toPath(/\.png$/);
   await expectFrame(frame).toMatchSnapshot("main-frame-0");
+}, {
+  capabilities: [
+    "ae.operation.project.open",
+    "ae.operation.comp.info",
+    "ae.operation.layer.get-layer",
+    "ae.operation.effect.apply",
+    "ae.operation.render.frame",
+  ],
 });
 
 test("reads a parameter back after setting it", async ({ ae, fixture, expect }) => {
@@ -51,6 +59,15 @@ test("reads a parameter back after setting it", async ({ ae, fixture, expect }) 
 
   const readBack = await effect.parameter("Amount").get();
   expect(readBack).toBe(42);
+}, {
+  capabilities: [
+    "ae.operation.project.open",
+    "ae.operation.comp.info",
+    "ae.operation.layer.get-layer",
+    "ae.operation.effect.apply",
+    "ae.operation.effect.set-parameter",
+    "ae.operation.effect.get-parameter",
+  ],
 });
 
 test("the parameter reaches the pixels", async ({ ae, fixture, expect }) => {
@@ -69,6 +86,15 @@ test("the parameter reaches the pixels", async ({ ae, fixture, expect }) => {
   expect(before.width).toBe(after.width);
   expect(before.height).toBe(after.height);
   expect(before.path).not.toBe(after.path);
+}, {
+  capabilities: [
+    "ae.operation.project.open",
+    "ae.operation.comp.info",
+    "ae.operation.layer.get-layer",
+    "ae.operation.effect.apply",
+    "ae.operation.effect.set-parameter",
+    "ae.operation.render.frame",
+  ],
 });
 
 test("reports a missing composition as a typed failure", async ({ ae, fixture, expect }) => {
@@ -77,4 +103,6 @@ test("reports a missing composition as a typed failure", async ({ ae, fixture, e
     name: "EntityNotFoundError",
     kind: "composition",
   });
+}, {
+  capabilities: ["ae.operation.project.open", "ae.operation.comp.info"],
 });
