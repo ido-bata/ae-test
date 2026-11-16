@@ -37,11 +37,11 @@ The layering rule: `ae-test → ae-a8n → After Effects`. Do not reach past `ae
 
 ## Delivery
 
-- `main` = released state. No active `release-x-y-z` integration line; independent ticket PRs target `main`. `release/*` PRs into `main` are release-class.
+- `main` = released state. Current integration line: `release/0.1.0-alpha.1`; independent ticket PRs target that release branch. `release/* -> main` PRs are release-class.
 - 1 top-level Issue = 1 number-only branch = 1 ticket PR.
 - Publish the branch and open a **Draft PR** immediately after the first meaningful commit.
 - PR landing is **merge commit only** (squash/rebase disabled at the repository level).
-- **Merging is a human-authorized side effect.** An agent never merges. Readiness is not authorization.
+- Ticket PRs that satisfy the readiness/quality gate land autonomously in dependency order without additional user merge authorization. `release/* -> main` landing and npm publish remain explicit human-authorized side effects; an agent does not perform them.
 
 ## Toolchain
 
