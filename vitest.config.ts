@@ -7,5 +7,9 @@ export default defineConfig({
     // fails on them for having no vitest tests in them.
     include: ["test/**/*.test.ts"],
     exclude: ["node_modules/**", "dist/**", "specs/**", ".ae-test-results/**"],
+    // Some tests exec the real npm CLI or tsc; a cold spawn alone can take
+    // tens of seconds on a loaded machine, so the 5s default is too tight.
+    testTimeout: 60000,
+    hookTimeout: 60000,
   },
 });
