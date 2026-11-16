@@ -73,6 +73,13 @@ ae-a8n `0.1.0-alpha.1` fixes noted below.
 - A passed test that never launched a session no longer classifies as
   `fake-only` or `real-host-verified`; it records `UNKNOWN` with a
   `session-not-launched` diagnostic.
+- Host promotion now requires proven transport provenance: `run()` records
+  the session transport's `kind` in session facts, and classification uses
+  it — `fake-in-process` is `fake-only`, `script-invocation` is
+  `real-host-verified`, anything else is `unknown` and never promotes. A
+  `conformance.host` declaration that disagrees with the observed
+  transport adds a `host-provenance-mismatch` diagnostic and makes the
+  report not ok.
 - A run whose `--grep`/`--capability` filters select zero tests exits 1
   (`noTestsSelected`) instead of reporting a green run, and `conformance.json`
   reports not-ok with a `no-tests-selected` diagnostic.

@@ -150,6 +150,8 @@ export type ConformanceRecord = {
     readonly asid: number | null;
     readonly hostScriptExtensions: readonly string[];
     readonly fixtures: readonly FixtureDigest[];
+    /** The transport kind the session attested, or null when unproven. */
+    readonly transportKind: string | null;
   };
   readonly recordedAt: string;
   readonly failure?: {
@@ -405,7 +407,7 @@ function buildRecord(
 ): ConformanceRecord {
   const id = `${context.runId}:${result.id}`;
   const diagnostics: ConformanceDiagnostic[] = [];
-  const classified = classify(result, context.host);
+  const classified = classify(result);
   let { result: conformanceResult, classification } = classified;
 
   const unknownCapabilityIds =
@@ -441,6 +443,26 @@ function buildRecord(
       detail:
         "test passed without launching a session; a pass with no host contact cannot be conformance evidence",
     });
+  }
+
+  // The declared host is a claim; the session's transport kind is the
+  // evidence. A mismatch means the run cannot stand behind its declaration.
+  if (result.session !== undefined) {
+    const provenance = hostProvenance(result);
+    if (provenance === "unknown") {
+      diagnostics.push({
+        severity: context.host === "real" ? "error" : "warning",
+        code: "host-provenance-unknown",
+        detail:
+          "the session transport kind was not recognized; fake vs real host provenance is unproven",
+      });
+    } else if (provenance !== context.host) {
+      diagnostics.push({
+        severity: "error",
+        code: "host-provenance-mismatch",
+        detail: `run declared host "${context.host}" but the session transport is "${result.session.transport}" (${provenance})`,
+      });
+    }
   }
 
   // Catalog compatibility is checked against what the record actually
@@ -537,6 +559,7 @@ function buildRecord(
       asid: result.session?.asid ?? null,
       hostScriptExtensions: result.session?.extensions ?? [],
       fixtures: result.session?.fixtures ?? [],
+      transportKind: result.session?.transport ?? null,
     },
     recordedAt: context.recordedAt,
     ...(result.failure === undefined
@@ -555,10 +578,28 @@ function buildRecord(
   };
 }
 
-function classify(
-  result: TestResult,
-  host: ConformanceHost,
-): { result: ConformanceResult; classification: ConformanceClassification } {
+/**
+ * Transport kinds ae-a8n reports through the capability handshake. Only the
+ * built-in script transport is a real After Effects process; the in-process
+ * fake is fake evidence; anything else — including a transport that cannot
+ * say — has unproven provenance and must never promote.
+ */
+const REAL_TRANSPORT_KIND = "script-invocation";
+const FAKE_TRANSPORT_KIND = "fake-in-process";
+
+export type HostProvenance = "fake" | "real" | "unknown";
+
+export function hostProvenance(result: TestResult): HostProvenance {
+  const transport = result.session?.transport;
+  if (transport === FAKE_TRANSPORT_KIND) return "fake";
+  if (transport === REAL_TRANSPORT_KIND) return "real";
+  return "unknown";
+}
+
+function classify(result: TestResult): {
+  result: ConformanceResult;
+  classification: ConformanceClassification;
+} {
   switch (result.status) {
     case "skipped":
       return { result: "NOT_RUN", classification: "not-run" };
@@ -576,24 +617,24 @@ function classify(
       return { result: "FAIL", classification: "failed" };
     case "passed": {
       const expectation = result.conformance ?? "pass";
-      // Promotable classes require a session that actually ran: a pass with
-      // no host contact is honest non-proof, not fake-only or real-host.
-      if (expectation === "pass" && result.session === undefined) {
-        return { result: "UNKNOWN", classification: "unknown" };
+      if (expectation === "pass") {
+        // Promotable classes require a session that actually ran *and*
+        // provenance the transport itself attests: a declared host is a
+        // claim, not evidence, so an injected fake transport can never read
+        // as real-host-verified.
+        if (result.session === undefined) {
+          return { result: "UNKNOWN", classification: "unknown" };
+        }
+        const provenance = hostProvenance(result);
+        if (provenance === "unknown") {
+          return { result: "UNKNOWN", classification: "unknown" };
+        }
+        return {
+          result: "PASS",
+          classification: provenance === "fake" ? "fake-only" : "real-host-verified",
+        };
       }
-      const classification: ConformanceClassification =
-        expectation === "pass"
-          ? host === "fake"
-            ? "fake-only"
-            : "real-host-verified"
-          : expectation;
-      return {
-        result:
-          classification === "fake-only" || classification === "real-host-verified"
-            ? "PASS"
-            : "UNKNOWN",
-        classification,
-      };
+      return { result: "UNKNOWN", classification: expectation };
     }
   }
 }

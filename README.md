@@ -94,9 +94,13 @@ With `--conformance` (and optionally `--capability-catalog <catalog.json>`),
 the run writes `conformance.json`: one immutable record per test with the
 capability IDs, platform, AE version, artifact SHA-256s, session facts and a
 classification. A fake-host pass is `fake-only`; only a pass on a real host
-is `real-host-verified` — and only when a session actually ran: a pass with
-no host contact records `UNKNOWN`. `unsupported`, `refused`, `unknown`,
-`blocked` and `not-run` stay distinct and never count as verified coverage;
+is `real-host-verified` — and only when a session actually ran *and* its
+transport provenance proves it: a pass with no host contact, or with a
+transport that cannot be proven real, records `UNKNOWN`. `conformance.host`
+is a claim, not evidence: if it disagrees with the observed transport the
+record keeps the observed classification and the report is not ok.
+`unsupported`, `refused`, `unknown`, `blocked` and `not-run` stay distinct
+and never count as verified coverage;
 a passing test that only proves one of those records `UNKNOWN`, not `PASS`.
 When `conformance.json` is not ok, the CLI exits 1 even if every test
 passed — including when a `--grep`/`--capability` filter selected zero

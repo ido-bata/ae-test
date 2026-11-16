@@ -122,6 +122,14 @@ export type SessionFacts = {
   /** Static host methods this project's host script declared. */
   readonly extensions: readonly string[];
   readonly fixtures: readonly FixtureDigest[];
+  /**
+   * The kind of transport the session ran on: the injected transport's own
+   * `kind` (`fake-in-process` is ae-a8n's fake host, `script-invocation` the
+   * built-in real-AE transport), or "script-invocation" when no transport
+   * was injected. Absent or null means provenance could not be proven —
+   * never treat it as real.
+   */
+  readonly transport?: string | null;
 };
 
 export type TestFailure = {
