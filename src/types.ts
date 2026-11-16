@@ -165,6 +165,8 @@ export type RunSummary = {
   readonly reportPath: string;
   /** Present when the run was asked for conformance evidence. */
   readonly conformancePath?: string;
+  /** `conformance.json`'s own ok flag, when conformance evidence was written. */
+  readonly conformanceOk?: boolean;
 };
 
 export type { RenderedFrame, TraceEvent };

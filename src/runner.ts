@@ -172,13 +172,15 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     resultsDir,
     reportPath,
   };
-  const conformancePath =
+  const conformance =
     options.conformance === undefined
       ? undefined
-      : writeConformanceReport(baseSummary, options.conformance, conformanceCatalog).path;
+      : writeConformanceReport(baseSummary, options.conformance, conformanceCatalog);
   const summary: RunSummary = {
     ...baseSummary,
-    ...(conformancePath === undefined ? {} : { conformancePath }),
+    ...(conformance === undefined
+      ? {}
+      : { conformancePath: conformance.path, conformanceOk: conformance.report.ok }),
   };
   writeFileSync(reportPath, `${JSON.stringify(summary, null, 2)}\n`, "utf-8");
   return summary;

@@ -113,7 +113,7 @@ export type ConformanceRecord = {
   readonly environment: {
     readonly host: ConformanceHost;
     readonly session: "launched" | "not-launched";
-    readonly disposableProject: boolean;
+    readonly disposableProject: "yes" | "no" | "unknown";
     readonly sideEffects: "none-observed" | "unproven" | "not-applicable";
     readonly cleanup: TestResult["cleanup"];
     readonly uid: number | null;
@@ -420,13 +420,11 @@ function buildRecord(
     environment: {
       host: context.host,
       session: sessionLaunched ? "launched" : "not-launched",
-      disposableProject: (result.session?.fixtures.length ?? 0) > 0,
+      disposableProject: "unknown",
       sideEffects:
-        result.status === "passed" && result.cleanup?.status !== "failed"
-          ? "none-observed"
-          : result.session === undefined
-            ? "not-applicable"
-            : "unproven",
+        context.host === "fake" || result.session === undefined
+          ? "not-applicable"
+          : "unproven",
       cleanup: result.cleanup,
       uid: result.session?.uid ?? null,
       asid: result.session?.asid ?? null,
@@ -471,18 +469,18 @@ function classify(
       return { result: "FAIL", classification: "failed" };
     case "passed": {
       const expectation = result.conformance ?? "pass";
-      if (expectation === "unsupported") {
-        return { result: "PASS", classification: "unsupported" };
-      }
-      if (expectation === "refused") {
-        return { result: "PASS", classification: "refused" };
-      }
-      if (expectation === "unknown") {
-        return { result: "PASS", classification: "unknown" };
-      }
+      const classification: ConformanceClassification =
+        expectation === "pass"
+          ? host === "fake"
+            ? "fake-only"
+            : "real-host-verified"
+          : expectation;
       return {
-        result: "PASS",
-        classification: host === "fake" ? "fake-only" : "real-host-verified",
+        result:
+          classification === "fake-only" || classification === "real-host-verified"
+            ? "PASS"
+            : "UNKNOWN",
+        classification,
       };
     }
   }

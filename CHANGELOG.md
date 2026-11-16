@@ -46,7 +46,9 @@ ae-a8n `0.1.0-alpha.1` fixes noted below.
   `not-run`, `failed`, `fake-only` and `real-host-verified` distinct; a
   fake-host pass never promotes to real-host verification, catalog IDs are
   checked against a supplied `catalog.json`, and artifact hashes let a
-  consumer recompute the evidence.
+  consumer recompute the evidence. Non-promotable classifications record
+  `UNKNOWN` rather than `PASS`, environment fields that lack evidence stay
+  `unknown`/`unproven`, and a non-ok `conformance.json` makes the CLI exit 1.
 
 ### Changed
 

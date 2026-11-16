@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   buildConformanceReport,
   clearRegistry,
+  exitCodeFor,
   loadCapabilityCatalog,
   run,
 } from "../dist/index.js";
@@ -157,6 +158,11 @@ describe("conformance classification", () => {
       "refused",
       "unknown",
     ]);
+    expect(report.records.map((record) => record.result)).toEqual([
+      "UNKNOWN",
+      "UNKNOWN",
+      "UNKNOWN",
+    ]);
     expect(report.records.every((record) => record.catalogBinding === null)).toBe(true);
   });
 
@@ -253,5 +259,37 @@ describe("runner integration", () => {
 
     const runReport = JSON.parse(readFileSync(summary.reportPath, "utf-8")) as RunSummary;
     expect(runReport.conformancePath).toBe(summary.conformancePath);
+    expect(runReport.conformanceOk).toBe(true);
+    expect(summary.conformanceOk).toBe(true);
+    expect(exitCodeFor(summary)).toBe(0);
+  });
+
+  it("makes a non-OK conformance report fail the run's exit status", async () => {
+    const catalogPath = join(dir, "catalog.json");
+    writeFileSync(
+      catalogPath,
+      JSON.stringify({
+        schema: "ae-devtools.capability-catalog/v1",
+        records: [{ id: "ae.operation.project.open" }],
+      }),
+    );
+
+    const summary = await run({
+      files: [SPEC],
+      resultsDir: join(dir, "results"),
+      projectsDir: PROJECTS_DIR,
+      transport: new FakeAfterEffectsTransport(),
+      updateSnapshots: true,
+      conformance: {
+        host: "fake",
+        catalogPath,
+        runId: "missing-capabilities",
+      },
+    });
+
+    const report = JSON.parse(readFileSync(summary.conformancePath ?? "", "utf-8")) as ConformanceReport;
+    expect(report.ok).toBe(false);
+    expect(summary.conformanceOk).toBe(false);
+    expect(exitCodeFor(summary)).toBe(1);
   });
 });

@@ -95,7 +95,9 @@ the run writes `conformance.json`: one immutable record per test with the
 capability IDs, platform, AE version, artifact SHA-256s, session facts and a
 classification. A fake-host pass is `fake-only`; only a pass on a real host
 is `real-host-verified`. `unsupported`, `refused`, `unknown`, `blocked` and
-`not-run` stay distinct and never count as verified coverage.
+`not-run` stay distinct and never count as verified coverage; a passing test
+that only proves one of those records `UNKNOWN`, not `PASS`. When
+`conformance.json` is not ok, the CLI exits 1 even if every test passed.
 
 Use **match names** (`ADBE Gaussian Blur 2`, `ADBE Gaussian Blur 2-0001`), not
 display names: display names are localised. ae-a8n's skill and README cover
