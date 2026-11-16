@@ -71,6 +71,8 @@ test("renders through the installed package", async ({ ae, fixture, expect, expe
   await effect.parameter("Amount").set(10);
   const frame = await comp.renderFrame(0);
   expectFrame(frame).toPath(/\\.png$/);
+  const again = await comp.renderFrame(0);
+  await expectFrame(again).toMatchFrame(frame);
 });
 test("a typed failure is assertable", async ({ ae, fixture, expect }) => {
   const project = await ae.openProject(fixture.project("fixture.aep"));

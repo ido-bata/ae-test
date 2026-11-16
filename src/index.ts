@@ -33,6 +33,7 @@ export {
 } from "./expect.js";
 export { SnapshotStore } from "./snapshot.js";
 export type { SnapshotStoreOptions } from "./snapshot.js";
+export type { ImageComparisonOptions, ImageDifference } from "./image.js";
 
 export { HostNotOwnedError, TestFixture } from "./fixture.js";
 export type { FixtureOptions } from "./fixture.js";
@@ -52,6 +53,7 @@ export type {
   Artifact,
   Fixture,
   FixtureDigest,
+  RenderedFrame,
   RunSummary,
   SessionFacts,
   TestContext,

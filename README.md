@@ -78,7 +78,7 @@ skip("not yet", async () => {});
 | `testInfo` | `{ id, title, file, outputDir }` |
 | `expect(value)` | `toBe`, `toEqual`, `toMatchObject`, `toBeDefined`, `toBeGreaterThan`, `toBeLessThan`, `toBeCloseTo`, `.not` |
 | `expect(promise).rejects()` | Resolves to an expectation on the rejection: `toMatchObject({ name: "EntityNotFoundError", kind: "composition" })` |
-| `expectFrame(frame)` | `toHaveSize(w, h)`, `toPath(pattern)`, `await toMatchSnapshot(name)` |
+| `expectFrame(frame)` | `toHaveSize(w, h)`, `toPath(pattern)`, `await toMatchFrame(other, options?)`, `await toMatchSnapshot(name, options?)` |
 
 Use **match names** (`ADBE Gaussian Blur 2`, `ADBE Gaussian Blur 2-0001`), not
 display names: display names are localised. ae-a8n's skill and README cover
@@ -124,13 +124,33 @@ unchanged (it still only drives an After Effects it starts), and
 the evidence says which account produced it. Machine setup for the helper
 account is `ae-a8n setup`'s job, not this package's.
 
-**Snapshots** compare the SHA-256 of the rendered PNG bytes: exact, no
-tolerance. Baselines are written by `--update-snapshots` to
-`<results-dir>/__snapshots__/<test id>--<name>.sha256`. They live inside the
-results directory, so keep that directory (or copy the baselines back into it)
-between runs; a missing baseline fails and names the render it would have
-recorded. Test ids are derived from the spec's path, so moving a spec renames
-its baselines.
+**Snapshots** compare the SHA-256 of the rendered PNG bytes by default:
+exact, no tolerance. `--update-snapshots` writes baselines to
+`<results-dir>/__snapshots__/<test id>--<name>.sha256` plus the baseline PNG
+as `<test id>--<name>.png`. They live inside the results directory, so keep
+that directory (or copy the baselines back into it) between runs; a missing
+baseline fails and names the render it would have recorded. Test ids are
+derived from the spec's path, so moving a spec renames its baselines.
+
+When byte-exact comparison is too strict, pass pixel tolerances as the second
+argument. The PNGs are decoded to RGBA and compared per channel:
+
+```js
+await expectFrame(frame).toMatchSnapshot("main-frame-0", {
+  threshold: 8,             // per-channel delta still counted as equal (0-255)
+  maxDiffPixels: 12,        // absolute differing-pixel budget
+  maxDiffPixelRatio: 0.001, // or a fraction of all pixels, 0-1
+});
+```
+
+At least one of `maxDiffPixels` / `maxDiffPixelRatio` bounds the result;
+`threshold` alone still requires every pixel to match exactly. A digest
+mismatch without these options keeps the old exact-hash failure. A digest-only
+baseline written before image baselines existed needs one
+`--update-snapshots` run before tolerances can be used.
+
+`expectFrame(after).toMatchFrame(before, options)` applies the same pixel
+comparison directly between two renders, without a stored baseline.
 
 ## Fixtures
 
@@ -171,7 +191,7 @@ updateSnapshots, transport })` resolves to a `RunSummary`; `formatRun` and
   report.json                       every result: status, duration, failure, artifacts, cleanup,
                                     and the session it ran against (uid, audit session id, host
                                     version, declared extension methods, fixture SHA-256s)
-  __snapshots__/                    baselines (sha256)
+  __snapshots__/                    baselines (sha256 digest + PNG)
   <test id>/
     trace.jsonl                     ae-a8n's record of every operation (op, status, durationMs, args, result/error)
     artifacts/[subdirectory/]*.png  renders
