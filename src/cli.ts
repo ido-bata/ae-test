@@ -19,8 +19,11 @@ import { run, type RunOptions } from "./runner.js";
 const USAGE = `ae-test <files...> [options]
 
 Options:
-  --results-dir <dir>     Where artifacts, traces, and snapshots go
+  --results-dir <dir>     Where artifacts, traces, and the report go
                           (default: .ae-test-results)
+  --baseline-dir <dir>    Where snapshot baselines live, meant to be
+                          committed (default: ./__snapshots__, grouped per
+                          environment). Read-only unless --update-snapshots
   --projects-dir <dir>    Where .aep fixtures live (default: fixtures)
   --timeout <ms>          Per-test budget (default: 60000)
   --grep <substring>      Only run tests whose title contains this
@@ -45,6 +48,7 @@ Options:
 
 type CliOptions = {
   resultsDir?: string;
+  baselineDir?: string;
   projectsDir?: string;
   timeoutMs?: number;
   grep?: string;
@@ -92,6 +96,12 @@ function parse(argv: readonly string[]): Parsed {
         const value = next();
         if (value === undefined) return { files, options, error: "--results-dir needs a value" };
         options.resultsDir = value;
+        break;
+      }
+      case "--baseline-dir": {
+        const value = next();
+        if (value === undefined) return { files, options, error: "--baseline-dir needs a value" };
+        options.baselineDir = value;
         break;
       }
       case "--projects-dir": {
@@ -218,6 +228,7 @@ async function main(): Promise<number> {
   const runOptions: RunOptions = {
     files,
     ...(options.resultsDir === undefined ? {} : { resultsDir: options.resultsDir }),
+    ...(options.baselineDir === undefined ? {} : { baselineDir: options.baselineDir }),
     ...(options.projectsDir === undefined ? {} : { projectsDir: options.projectsDir }),
     ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
     ...(options.grep === undefined ? {} : { grep: options.grep }),

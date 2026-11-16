@@ -69,7 +69,14 @@ export type {
 export { HostNotOwnedError, TestFixture } from "./fixture.js";
 export type { FixtureOptions } from "./fixture.js";
 
-export { run, loadTestFiles, countByStatus, hasFailures, DEFAULT_RESULTS_DIR } from "./runner.js";
+export {
+  run,
+  loadTestFiles,
+  countByStatus,
+  hasFailures,
+  DEFAULT_RESULTS_DIR,
+  DEFAULT_BASELINE_DIR,
+} from "./runner.js";
 export type { RunOptions } from "./runner.js";
 
 export {

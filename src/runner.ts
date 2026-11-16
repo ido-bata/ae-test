@@ -39,11 +39,30 @@ import type {
 
 export const DEFAULT_RESULTS_DIR = ".ae-test-results";
 
+/**
+ * Where snapshot baselines live by default: a directory meant to be committed,
+ * unlike the results directory. The runner groups baselines into per-
+ * environment subdirectories underneath it (see `snapshotEnvironmentKey`).
+ */
+export const DEFAULT_BASELINE_DIR = "__snapshots__";
+
+/** ae-a8n's in-process fake host; its kind is the one stable identifier it has. */
+const FAKE_TRANSPORT_KIND = "fake-in-process";
+
 export type RunOptions = {
   /** Test files to import. */
   readonly files: readonly string[];
-  /** Root for artifacts, traces, reports, and snapshots. */
+  /** Root for artifacts, traces, and reports. */
   readonly resultsDir?: string;
+  /**
+   * Directory holding snapshot baselines, meant to be committed to the
+   * project. Defaults to `__snapshots__` under the current directory. Baselines
+   * are grouped per environment (transport, OS/arch, After Effects version)
+   * so a baseline recorded against the fake host or another AE version is
+   * never compared against this run's renders. Normally read-only;
+   * `--update-snapshots` rewrites only this directory.
+   */
+  readonly baselineDir?: string;
   /** Directory holding `.aep` project fixtures. */
   readonly projectsDir?: string;
   /** Per-test timeout, overridable per test. */
@@ -67,6 +86,49 @@ export type RunOptions = {
   /** Write ae-devtools-schema conformance evidence for this run. */
   readonly conformance?: ConformanceRunOptions;
 };
+
+/**
+ * The baseline namespace for one run's environment.
+ *
+ * A real host renders through the OS and an After Effects version, so its
+ * baselines are keyed by transport kind, platform/arch and the host's own
+ * version — a baseline recorded on macOS AE 26.x must not be compared on
+ * Windows or another AE version. The in-process fake renders identically
+ * everywhere by construction, so keying it by OS would only fragment
+ * baselines; its kind alone is the namespace.
+ */
+function snapshotEnvironmentKey(
+  transport: HostTransport | undefined,
+  session: AfterEffects,
+): string {
+  const kind =
+    transport === undefined
+      ? "script-invocation"
+      : typeof transport.kind === "string" && transport.kind.length > 0
+        ? transport.kind
+        : "unknown-transport";
+  const parts = [kind];
+  if (kind !== FAKE_TRANSPORT_KIND) {
+    parts.push(process.platform, process.arch);
+    const ae = hostVersion(session);
+    if (ae !== null) {
+      parts.push(`ae-${ae.version}${ae.build === undefined ? "" : `-${ae.build}`}`);
+    }
+  }
+  return parts.join("-").replace(/[^a-zA-Z0-9._-]+/g, "-");
+}
+
+function hostVersion(session: AfterEffects): { version: string; build?: string } | null {
+  try {
+    const info = session.info();
+    return {
+      version: info.version,
+      ...(info.build === undefined ? {} : { build: info.build }),
+    };
+  } catch {
+    return null;
+  }
+}
 
 /** A test that exceeded its budget. The session is torn down regardless. */
 class TestTimeoutError extends Error {
@@ -100,9 +162,12 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   const began = Date.now();
 
   const resultsDir = resolve(options.resultsDir ?? DEFAULT_RESULTS_DIR);
-  const snapshotsDir = join(resultsDir, "__snapshots__");
+  // Pre-0.2 baselines lived inside the results directory. They are still read
+  // as a fallback so an existing suite keeps working until its baselines are
+  // re-recorded or moved; nothing is written there any more.
+  const legacySnapshotsDir = join(resultsDir, "__snapshots__");
+  const baselineRoot = resolve(options.baselineDir ?? DEFAULT_BASELINE_DIR);
   mkdirSync(resultsDir, { recursive: true });
-  mkdirSync(snapshotsDir, { recursive: true });
 
   // A bad catalog is a setup error: fail before any test launches a session.
   const conformanceCatalog: CapabilityCatalogIndex | undefined =
@@ -153,7 +218,8 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     }
     const result = await runOne(declaration, {
       resultsDir,
-      snapshotsDir,
+      baselineRoot,
+      legacySnapshotsDir,
       updateSnapshots: options.updateSnapshots ?? false,
       ...(options.projectsDir === undefined ? {} : { projectsDir: options.projectsDir }),
       ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
@@ -213,7 +279,10 @@ function blockedResult(declaration: TestDeclaration, reason: string): TestResult
 
 type OneTestOptions = {
   resultsDir: string;
-  snapshotsDir: string;
+  /** Root of the committed baseline tree; per-environment dirs live under it. */
+  baselineRoot: string;
+  /** Pre-0.2 baseline location, read-only fallback. */
+  legacySnapshotsDir: string;
   projectsDir?: string;
   /** Run-level default budget; a test may override it. */
   timeoutMs?: number;
@@ -265,11 +334,7 @@ async function runOne(
       : { hostEnvironment: options.hostEnvironment }),
   };
   const fixture = new TestFixture(testInfo, fixtureOptions);
-  const snapshots = new SnapshotStore({
-    dir: options.snapshotsDir,
-    testId: declaration.id.replace(/[^a-zA-Z0-9._-]+/g, "-"),
-    update: options.updateSnapshots,
-  });
+  const testId = declaration.id.replace(/[^a-zA-Z0-9._-]+/g, "-");
 
   let session: AfterEffects | undefined;
   let status: TestStatus = "passed";
@@ -282,6 +347,15 @@ async function runOne(
   try {
     session = await fixture.session();
     launched = true;
+    // The baseline directory is environment-scoped, and the environment is
+    // only fully known once the session is up: the transport kind up front,
+    // the host's own version from the launch probe.
+    const snapshots = new SnapshotStore({
+      dir: join(options.baselineRoot, snapshotEnvironmentKey(options.transport, session)),
+      legacyDir: options.legacySnapshotsDir,
+      testId,
+      update: options.updateSnapshots,
+    });
     const context: TestContext = {
       ae: session,
       fixture: fixture.fixture,

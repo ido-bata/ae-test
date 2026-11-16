@@ -77,6 +77,7 @@ test("renders through the installed package", async ({ ae, fixture, expect, expe
   expectFrame(frame).toPath(/\\.png$/);
   const again = await comp.renderFrame(0);
   await expectFrame(again).toMatchFrame(frame);
+  await expectFrame(frame).toMatchSnapshot("main-frame-0");
 }, { capabilities: ["ae.operation.project.open", "ae.operation.render.frame"] });
 test("a typed failure is assertable", async ({ ae, fixture, expect }) => {
   const project = await ae.openProject(fixture.project("fixture.aep"));
@@ -100,6 +101,9 @@ test("fails on purpose", async ({ expect }) => { expect(1).toBe(2); });
     "--fake-host",
     "--results-dir",
     "results",
+    "--baseline-dir",
+    "baselines",
+    "--update-snapshots",
     "--conformance",
     "--capability-catalog",
     "catalog.json",
@@ -127,6 +131,17 @@ test("fails on purpose", async ({ expect }) => { expect(1).toBe(2); });
   }
   for (const artifact of report.results[0].artifacts) {
     if (!existsSync(artifact.path)) fail(`artifact ${artifact.path} is in the report but not on disk`);
+  }
+  // The snapshot baseline landed in the committed tree, namespaced by
+  // environment — not inside the results directory.
+  const baselineEnv = join(project, "baselines", "fake-in-process");
+  const baselineFiles = existsSync(baselineEnv) ? readdirSync(baselineEnv) : [];
+  if (!baselineFiles.some((name) => name.endsWith(".sha256")) ||
+      !baselineFiles.some((name) => name.endsWith(".png"))) {
+    fail(`no snapshot baseline under ${baselineEnv}: ${JSON.stringify(baselineFiles)}`);
+  }
+  if (existsSync(join(project, "results", "__snapshots__"))) {
+    fail("baselines were written inside the results directory");
   }
 
   const failing = cli(["failing.spec.mjs", "--fake-host", "--results-dir", "results-failing"]);

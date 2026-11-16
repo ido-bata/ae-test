@@ -1,6 +1,20 @@
 # Changelog
 
-## 0.1.0-alpha.1 (unreleased)
+## 0.2.0-beta.1 (unreleased)
+
+### Changed
+
+- Snapshot baselines moved out of the results directory into a committed,
+  environment-scoped tree. `RunOptions.baselineDir` / `--baseline-dir` selects
+  the root (default `./__snapshots__`); baselines are grouped per environment
+  — transport kind, and for a real host OS/arch plus the AE version and build —
+  so a fake-host or different-version baseline is never compared against this
+  run's renders. A normal run is read-only; `--update-snapshots` writes only
+  the baselines the run compares. Baselines recorded before this change under
+  `<results-dir>/__snapshots__/` are still read as a fallback but never
+  written; re-run `--update-snapshots` once to migrate.
+
+## 0.1.0-alpha.1
 
 Depends on `@ido-bata/ae-a8n` `0.1.0-alpha.2` exactly — the first published
 version that carries the static host extension API, and the reason the
