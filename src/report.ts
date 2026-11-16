@@ -75,6 +75,13 @@ export function formatSummary(summary: RunSummary): string {
     "",
     `${parts.join(", ")} in ${summary.durationMs}ms`,
     `report: ${summary.reportPath}`,
+    ...(summary.conformancePath === undefined
+      ? []
+      : [
+          `conformance: ${summary.conformancePath} (${
+            summary.conformanceOk === false ? "not ok" : "ok"
+          })`,
+        ]),
   ].join("\n");
 }
 
@@ -92,7 +99,7 @@ export function formatRun(summary: RunSummary): string {
 }
 
 export function exitCodeFor(summary: RunSummary): number {
-  return hasFailures(summary.results) ? 1 : 0;
+  return hasFailures(summary.results) || summary.conformanceOk === false ? 1 : 0;
 }
 
 function indent(lines: readonly string[], prefix: string): string[] {

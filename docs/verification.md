@@ -10,17 +10,19 @@ nothing about the other.
 
 - `npm ci` with `@ido-bata/ae-a8n@0.1.0-alpha.2` from registry.npmjs.org,
   integrity checked against `package-lock.json`, recorded in the job summary;
-- build, typecheck, lint, 126 tests (runner, fixtures, teardown, snapshots and
-  pixel-tolerant image comparison, reports, the dependency pin, the version
-  constant, the README examples type-checked against `dist`, and the
-  static-host-extension cases — those now run, because the pinned version is
-  the first published one with the extension API);
+- build, typecheck, lint, 134 tests (runner, fixtures, teardown, snapshots and
+  pixel-tolerant image comparison, conformance evidence classification and
+  non-ok exit status, reports, the dependency pin, the version constant, the README examples
+  type-checked against `dist`, and the static-host-extension cases — those
+  now run, because the pinned version is the first published one with the
+  extension API);
 - the CLI against `specs/plugin-render.spec.ts` with `--fake-host`, recording
   then comparing snapshots;
 - `scripts/check-packed-package.js`: the packed tarball installed into an
   empty project, specs importing `@ido-bata/ae-test` by name run through the
-  installed `ae-test` binary; exit codes 0 / 1 / 2, `report.json`, render and
-  trace artifacts.
+  installed `ae-test` binary; exit codes 0 / 1 / 2, `report.json`, a
+  `conformance.json` whose records are all `fake-only`, render and trace
+  artifacts.
 
 The fake host is ae-a8n's model of After Effects (`@ido-bata/ae-a8n/testing`).
 It knows effects that do not exist in After Effects (`ADBE Fake Gaussian

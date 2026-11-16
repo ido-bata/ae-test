@@ -29,6 +29,11 @@ Options:
                           project's own static host methods can be called
   --fake-host             Run against the in-repo fake After Effects host
                           instead of a real installation
+  --conformance           Write conformance.json evidence beside report.json
+  --capability-catalog <path>  ae-devtools catalog.json to validate capability IDs
+  --source-sha <sha>      Git SHA of the code under test for the evidence record
+  --run-id <id>           Conformance run id (default: generated)
+  --conformance-out <path>  Write conformance evidence here instead
   -h, --help              Show this message
 `;
 
@@ -40,6 +45,11 @@ type CliOptions = {
   updateSnapshots?: boolean;
   hostScript?: string;
   fakeHost?: boolean;
+  conformance?: boolean;
+  capabilityCatalog?: string;
+  sourceSha?: string;
+  runId?: string;
+  conformanceOut?: string;
 };
 
 type Parsed = {
@@ -102,6 +112,33 @@ function parse(argv: readonly string[]): Parsed {
         options.hostScript = value;
         break;
       }
+      case "--conformance":
+        options.conformance = true;
+        break;
+      case "--capability-catalog": {
+        const value = next();
+        if (value === undefined) return { files, options, error: "--capability-catalog needs a value" };
+        options.capabilityCatalog = value;
+        break;
+      }
+      case "--source-sha": {
+        const value = next();
+        if (value === undefined) return { files, options, error: "--source-sha needs a value" };
+        options.sourceSha = value;
+        break;
+      }
+      case "--run-id": {
+        const value = next();
+        if (value === undefined) return { files, options, error: "--run-id needs a value" };
+        options.runId = value;
+        break;
+      }
+      case "--conformance-out": {
+        const value = next();
+        if (value === undefined) return { files, options, error: "--conformance-out needs a value" };
+        options.conformanceOut = value;
+        break;
+      }
       default:
         if (arg.startsWith("-")) {
           return { files, options, error: `unknown option: ${arg}` };
@@ -133,6 +170,16 @@ async function main(): Promise<number> {
     process.stderr.write(`test file not found: ${missing.join(", ")}\n`);
     return 2;
   }
+  if (
+    options.conformance !== true &&
+    (options.capabilityCatalog !== undefined ||
+      options.sourceSha !== undefined ||
+      options.runId !== undefined ||
+      options.conformanceOut !== undefined)
+  ) {
+    process.stderr.write("conformance options require --conformance\n\n" + USAGE);
+    return 2;
+  }
 
   // The fake host is opt-in and explicit. Silently substituting a fake for a
   // real After Effects would be the worst possible default: every test would
@@ -148,6 +195,21 @@ async function main(): Promise<number> {
     ...(options.updateSnapshots === undefined ? {} : { updateSnapshots: options.updateSnapshots }),
     ...(options.hostScript === undefined ? {} : { hostScript: options.hostScript }),
     ...(transport === undefined ? {} : { transport }),
+    ...(options.conformance === true
+      ? {
+          conformance: {
+            host: options.fakeHost === true ? ("fake" as const) : ("real" as const),
+            ...(options.capabilityCatalog === undefined
+              ? {}
+              : { catalogPath: options.capabilityCatalog }),
+            ...(options.sourceSha === undefined ? {} : { sourceSha: options.sourceSha }),
+            ...(options.runId === undefined ? {} : { runId: options.runId }),
+            ...(options.conformanceOut === undefined
+              ? {}
+              : { outPath: options.conformanceOut }),
+          },
+        }
+      : {}),
     onResult: (result) => {
       if (result.status === "failed" || result.status === "timed-out") {
         process.stderr.write(`  ✗ ${result.title}\n`);

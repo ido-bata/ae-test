@@ -16,6 +16,13 @@ import type { AsyncExpectation, Expectation, RenderedFrameExpectation } from "./
  */
 export type TestStatus = "passed" | "failed" | "timed-out" | "skipped" | "blocked";
 
+/**
+ * What a conformance test claims to prove. `pass` is the ordinary case; the
+ * others let a spec prove a refusal or an unsupported path without the run
+ * reporting it as an ordinary pass.
+ */
+export type ConformanceExpectation = "pass" | "unsupported" | "refused" | "unknown";
+
 /** How the session was torn down, separately from how the test body went. */
 export type CleanupOutcome =
   | { readonly status: "ok"; readonly quit: boolean }
@@ -77,6 +84,10 @@ export type TestDeclaration = {
   readonly timeoutMs: number | undefined;
   /** Resolved lazily so `test.skip` and focus filters work. */
   readonly skip: boolean;
+  /** Capability IDs this test is evidence for, in ae-devtools catalog grammar. */
+  readonly capabilities: readonly string[];
+  /** Conformance claim this test is allowed to make. */
+  readonly conformance?: ConformanceExpectation;
 };
 
 export type TestResultExtras = {
@@ -141,6 +152,10 @@ export type TestResult = {
   readonly artifacts: readonly Artifact[];
   /** Absent when no session was opened. */
   readonly session?: SessionFacts;
+  /** Capability IDs this result is evidence for. */
+  readonly capabilities: readonly string[];
+  /** Conformance claim this test was allowed to make. */
+  readonly conformance?: ConformanceExpectation;
 } & TestResultExtras;
 
 export type RunSummary = {
@@ -148,6 +163,10 @@ export type RunSummary = {
   readonly durationMs: number;
   readonly resultsDir: string;
   readonly reportPath: string;
+  /** Present when the run was asked for conformance evidence. */
+  readonly conformancePath?: string;
+  /** `conformance.json`'s own ok flag, when conformance evidence was written. */
+  readonly conformanceOk?: boolean;
 };
 
 export type { RenderedFrame, TraceEvent };

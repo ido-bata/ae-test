@@ -15,6 +15,12 @@ import { pathToFileURL } from "node:url";
 import type { AfterEffects, HostTransport } from "@ido-bata/ae-a8n";
 
 import { expect, expectFrame } from "./expect.js";
+import {
+  loadCapabilityCatalog,
+  writeConformanceReport,
+  type CapabilityCatalogIndex,
+  type ConformanceRunOptions,
+} from "./conformance.js";
 import { HostNotOwnedError, TestFixture, type FixtureOptions } from "./fixture.js";
 import { DEFAULT_TIMEOUT_MS, clearRegistry, setDeclaringFile } from "./registry.js";
 import { SnapshotStore } from "./snapshot.js";
@@ -55,6 +61,8 @@ export type RunOptions = {
   readonly hostEnvironment?: Readonly<Record<string, string>>;
   /** Called after each test, for progress output. */
   readonly onResult?: (result: TestResult) => void;
+  /** Write ae-devtools-schema conformance evidence for this run. */
+  readonly conformance?: ConformanceRunOptions;
 };
 
 /** A test that exceeded its budget. The session is torn down regardless. */
@@ -93,6 +101,12 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   mkdirSync(resultsDir, { recursive: true });
   mkdirSync(snapshotsDir, { recursive: true });
 
+  // A bad catalog is a setup error: fail before any test launches a session.
+  const conformanceCatalog: CapabilityCatalogIndex | undefined =
+    options.conformance?.catalogPath === undefined
+      ? undefined
+      : loadCapabilityCatalog(options.conformance.catalogPath);
+
   // A run owns the registry it executes. Without this, a second `run()` in
   // the same process would see the first run's registrations plus its own and
   // report duplicates.
@@ -120,6 +134,10 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         durationMs: 0,
         artifacts: [],
         blockedReason: hostUnknown,
+        capabilities: declaration.capabilities,
+        ...(declaration.conformance === undefined
+          ? {}
+          : { conformance: declaration.conformance }),
       };
       results.push(blocked);
       options.onResult?.(blocked);
@@ -148,11 +166,21 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   }
 
   const reportPath = join(resultsDir, "report.json");
-  const summary: RunSummary = {
+  const baseSummary: RunSummary = {
     results,
     durationMs: Date.now() - began,
     resultsDir,
     reportPath,
+  };
+  const conformance =
+    options.conformance === undefined
+      ? undefined
+      : writeConformanceReport(baseSummary, options.conformance, conformanceCatalog);
+  const summary: RunSummary = {
+    ...baseSummary,
+    ...(conformance === undefined
+      ? {}
+      : { conformancePath: conformance.path, conformanceOk: conformance.report.ok }),
   };
   writeFileSync(reportPath, `${JSON.stringify(summary, null, 2)}\n`, "utf-8");
   return summary;
@@ -186,6 +214,10 @@ async function runOne(
       status: "skipped",
       durationMs: 0,
       artifacts: [],
+      capabilities: declaration.capabilities,
+      ...(declaration.conformance === undefined
+        ? {}
+        : { conformance: declaration.conformance }),
     };
   }
 
@@ -278,6 +310,10 @@ async function runOne(
     ...(cleanup === undefined ? {} : { cleanup }),
     ...(sessionFacts === undefined ? {} : { session: sessionFacts }),
     artifacts,
+    capabilities: declaration.capabilities,
+    ...(declaration.conformance === undefined
+      ? {}
+      : { conformance: declaration.conformance }),
   };
 }
 

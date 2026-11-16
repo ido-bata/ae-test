@@ -60,6 +60,10 @@ try {
     fail(`installed @ido-bata/ae-a8n ${a8n.version}, package.json pins ${manifest.dependencies["@ido-bata/ae-a8n"]}`);
   }
 
+  writeFileSync(join(project, "catalog.json"), JSON.stringify({
+    schema: "ae-devtools.capability-catalog/v1",
+    records: [{ id: "ae.operation.project.open" }, { id: "ae.operation.render.frame" }],
+  }));
   writeFileSync(
     join(project, "passing.spec.mjs"),
     `import { test, AE_TEST_VERSION } from "@ido-bata/ae-test";
@@ -73,7 +77,7 @@ test("renders through the installed package", async ({ ae, fixture, expect, expe
   expectFrame(frame).toPath(/\\.png$/);
   const again = await comp.renderFrame(0);
   await expectFrame(again).toMatchFrame(frame);
-});
+}, { capabilities: ["ae.operation.project.open", "ae.operation.render.frame"] });
 test("a typed failure is assertable", async ({ ae, fixture, expect }) => {
   const project = await ae.openProject(fixture.project("fixture.aep"));
   await (await expect(project.comp("Missing")).rejects()).toMatchObject({ name: "EntityNotFoundError" });
@@ -91,12 +95,31 @@ test("fails on purpose", async ({ expect }) => { expect(1).toBe(2); });
   /** @param {string[]} args */
   const cli = (args) => spawnSync(bin, args, { cwd: project, encoding: "utf-8" });
 
-  const passing = cli(["passing.spec.mjs", "--fake-host", "--results-dir", "results"]);
+  const passing = cli([
+    "passing.spec.mjs",
+    "--fake-host",
+    "--results-dir",
+    "results",
+    "--conformance",
+    "--capability-catalog",
+    "catalog.json",
+    "--source-sha",
+    "packed",
+    "--run-id",
+    "packed",
+  ]);
   if (passing.status !== 0) fail(`passing suite exited ${passing.status}\n${passing.stdout}\n${passing.stderr}`);
   const report = JSON.parse(readFileSync(join(project, "results", "report.json"), "utf-8"));
   const statuses = report.results.map((/** @type {{ status: string }} */ r) => r.status);
   if (statuses.length !== 2 || statuses.some((/** @type {string} */ s) => s !== "passed")) {
     fail(`passing suite reported ${JSON.stringify(statuses)}`);
+  }
+  const conformance = JSON.parse(readFileSync(join(project, "results", "conformance.json"), "utf-8"));
+  if (conformance.ok !== true || conformance.host !== "fake") {
+    fail(`conformance report was not an ok fake-host report: ${JSON.stringify(conformance.summary)}`);
+  }
+  if (conformance.records.some((/** @type {{ classification: string }} */ r) => r.classification !== "fake-only")) {
+    fail("packed consumer conformance records were not all fake-only");
   }
   const rendered = report.results[0].artifacts.map((/** @type {{ kind: string }} */ a) => a.kind);
   if (!rendered.includes("render") || !rendered.includes("trace")) {

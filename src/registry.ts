@@ -8,7 +8,7 @@
 
 import { relative } from "node:path";
 
-import type { TestDeclaration, TestFn } from "./types.js";
+import type { ConformanceExpectation, TestDeclaration, TestFn } from "./types.js";
 
 export const DEFAULT_TIMEOUT_MS = 60_000;
 
@@ -30,7 +30,18 @@ export type TestOptions = {
   /** Millisecond budget for the whole test, including After Effects work. */
   readonly timeoutMs?: number;
   readonly skip?: boolean;
+  /** Capability IDs this test is conformance evidence for. */
+  readonly capabilities?: readonly string[];
+  /** The strongest conformance claim this test is allowed to make. */
+  readonly conformance?: ConformanceExpectation;
 };
+
+const CONFORMANCE_EXPECTATIONS: readonly ConformanceExpectation[] = [
+  "pass",
+  "unsupported",
+  "refused",
+  "unknown",
+];
 
 export function test(title: string, fn: TestFn, options: TestOptions = {}): void {
   if (typeof title !== "string" || title.length === 0) {
@@ -38,6 +49,18 @@ export function test(title: string, fn: TestFn, options: TestOptions = {}): void
   }
   if (typeof fn !== "function") {
     throw new TypeError(`test "${title}" needs a function`);
+  }
+  const capabilities = options.capabilities ?? [];
+  if (!Array.isArray(capabilities) || capabilities.some((id) => typeof id !== "string" || id.length === 0)) {
+    throw new TypeError(`test "${title}" capabilities must be non-empty strings`);
+  }
+  if (
+    options.conformance !== undefined &&
+    !CONFORMANCE_EXPECTATIONS.includes(options.conformance)
+  ) {
+    throw new TypeError(
+      `test "${title}" conformance must be one of ${CONFORMANCE_EXPECTATIONS.join(", ")}`,
+    );
   }
   sequence += 1;
   registry.push({
@@ -47,6 +70,8 @@ export function test(title: string, fn: TestFn, options: TestOptions = {}): void
     fn,
     timeoutMs: options.timeoutMs,
     skip: options.skip ?? false,
+    capabilities,
+    ...(options.conformance === undefined ? {} : { conformance: options.conformance }),
   });
 }
 
