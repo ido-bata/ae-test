@@ -57,8 +57,25 @@ ae-a8n `0.1.0-alpha.1` fixes noted below.
 - An After Effects whose ownership cannot be decided now records conformance
   classification `unknown` / result `UNKNOWN`; only `ownership.kind ===
   "attached"` records `refused`.
+- Catalog environment compatibility: when `--capability-catalog` is
+  supplied, a test whose every declared capability is incompatible with this
+  OS/arch is `blocked` before launch, and each conformance record flags
+  capabilities incompatible with the observed AE version
+  (`environment-incompatible`) or not fully evaluable
+  (`environment-unverified`).
+- `conformance.json` aggregates evidence for the release-candidate
+  same-bytes check: `binaries.plugin` / `binaries.sdk` hash the files cited
+  by `--plugin-binary` / `--sdk-binary` (repeatable), and `summary.matrix`
+  groups records by observed OS × AE version.
 
 ### Changed
+
+- A passed test that never launched a session no longer classifies as
+  `fake-only` or `real-host-verified`; it records `UNKNOWN` with a
+  `session-not-launched` diagnostic.
+- A run whose `--grep`/`--capability` filters select zero tests exits 1
+  (`noTestsSelected`) instead of reporting a green run, and `conformance.json`
+  reports not-ok with a `no-tests-selected` diagnostic.
 
 - `test/extension.test.ts` runs against the published dependency: the two
   cases that were kept and skipped on `0.1.0-alpha.0` now pass, and the CLI
