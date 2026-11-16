@@ -28,6 +28,23 @@ test("Gaussian Blur changes the pixels", async ({ ae, fixture, expectFrame }) =>
 npx ae-test specs/blur.spec.mjs
 ```
 
+Or configure the project once and let the CLI discover the suite:
+
+```json
+// ae-test.config.json
+{
+  "specs": ["specs/**/*.spec.mjs"],
+  "host": "fake",
+  "resultsDir": ".ae-test-results",
+  "baselineDir": "__snapshots__",
+  "projectsDir": "fixtures"
+}
+```
+
+```bash
+npx ae-test          # runs what the config selects, against the fake host
+```
+
 > **Alpha.** Published under the `next` dist-tag. The API may change between
 > alphas, and only macOS has been run against a real After Effects (below).
 
@@ -218,8 +235,11 @@ the intended outcome.
 ## Running
 
 ```text
-ae-test <files...> [options]
+ae-test [files...|--spec <glob>...] [options]
 
+  --config <file>        project config (default ./ae-test.config.json)
+  --spec <glob>          select specs by glob, repeatable (exclusive with files)
+  --real-host            real After Effects even when config says "fake"
   --results-dir <dir>     artifacts, traces, report.json (default .ae-test-results)
   --baseline-dir <dir>    snapshot baselines to commit (default ./__snapshots__)
   --projects-dir <dir>    where .aep fixtures live (default fixtures)
@@ -239,9 +259,25 @@ ae-test <files...> [options]
 
 Exit codes: **0** everything passed or was skipped, **1** something failed,
 timed out, or the run proved nothing (empty selection, not-ok conformance
-evidence), **2** the run never happened (no files, a bad flag, a crash before
-the first test). The fake host is never used unless `--fake-host` is given;
-it comes from `@ido-bata/ae-a8n/testing`, which ae-a8n marks unstable.
+evidence), **2** the run never happened (no files, a bad flag, a bad config,
+a crash before the first test). The fake host is never used unless `--fake-host`
+is given or the config says `"host": "fake"`; it comes from
+`@ido-bata/ae-a8n/testing`, which ae-a8n marks unstable.
+
+**Project config.** `ae-test.config.json` at the project root (or `--config
+<file>`) carries the options you would otherwise repeat: `specs` (glob
+patterns), `projectsDir`, `resultsDir`, `baselineDir`, `timeoutMs`, `grep`,
+`capabilities`, `host` (`"real"` | `"fake"`), `hostScript`, `installDir` and
+`hostEnvironment`. Precedence is per option: **CLI flag > config > default**.
+Paths inside the config resolve against the config file's own directory, so
+`--config path/to/project/ae-test.config.json` works from anywhere. Unknown
+keys and wrong types are setup errors (exit 2), not warnings.
+
+**Spec selection.** Most explicit wins: positional files, then `--spec`
+globs (working-directory relative), then `specs` in the config (config-dir
+relative), then the defaults `**/*.spec.{ts,js,mjs}` under the project root.
+`node_modules` and dot-directories are never searched. A selection that
+matches nothing exits 2 — a run that found no tests is never green.
 
 Programmatic use: `run({ files, resultsDir, baselineDir, projectsDir,
 timeoutMs, grep, capabilityFilter, updateSnapshots, transport, conformance })`
@@ -252,7 +288,9 @@ the listed capability IDs.
 `conformance` is `{ host: "fake" | "real", catalogPath?, sourceSha?, runId?,
 outPath?, pluginBinaries?, sdkBinaries? }`; `buildConformanceReport` /
 `writeConformanceReport` are also exported for consumers that assemble
-their own summary.
+their own summary. Config file handling is exported too:
+`loadConfigFile` / `findConfigFile` / `discoverSpecs` and the `AeTestConfig`
+type, for tools that resolve a project the way the CLI does.
 
 ## Getting the results
 

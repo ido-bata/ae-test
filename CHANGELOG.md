@@ -2,6 +2,21 @@
 
 ## 0.2.0-beta.1 (unreleased)
 
+### Added
+
+- Project config: `ae-test.config.json` (or `--config <file>`) carries `specs`
+  globs, `projectsDir`, `resultsDir`, `baselineDir`, `timeoutMs`, `grep`,
+  `capabilities`, `host` (`"real"` | `"fake"`), `hostScript`, `installDir` and
+  `hostEnvironment`. Precedence is CLI > config > default per option; config
+  paths resolve against the config file's directory; unknown keys and wrong
+  types exit 2. `loadConfigFile` / `findConfigFile` / `discoverSpecs` and the
+  `AeTestConfig` type are exported for programmatic consumers.
+- Spec discovery: with no positional files, `--spec <glob>` (repeatable) or
+  `specs` in config selects specs; otherwise `**/*.spec.{ts,js,mjs}` under the
+  project root. `node_modules` and dot-directories are skipped, results are
+  sorted and deduplicated, and an empty selection exits 2.
+- `--real-host` overrides a config `"host": "fake"` for a single run.
+
 ### Changed
 
 - Snapshot baselines moved out of the results directory into a committed,
