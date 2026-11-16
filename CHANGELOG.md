@@ -1,6 +1,10 @@
 # Changelog
 
-## 0.2.0-beta.1 (unreleased)
+## 0.2.0-beta.1
+
+Depends on `@ido-bata/ae-a8n` `0.1.0-alpha.2` exactly. First beta: breaking
+changes from the alpha line are collected here; the public contract they
+settle is documented in `docs/api.md`.
 
 ### Added
 
