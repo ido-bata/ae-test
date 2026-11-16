@@ -145,9 +145,9 @@ Pinned and checked by [`scripts/stage-publish.js`](../scripts/stage-publish.js)
 
 Steps:
 
-1. A pull request to `main` that bumps `package.json` `version`,
-   `AE_TEST_VERSION` in `src/index.ts` (a test keeps them equal), and
-   `CHANGELOG.md`. That merge commit is the release commit.
+1. A pull request to `main` that bumps `package.json` `version`, the exported
+   `AE_TEST_VERSION` constant, and `CHANGELOG.md`. That merge commit is the
+   release commit.
 2. Trusted publisher, stage-only, with 2FA (npm ≥ 11.15.0):
 
    ```bash

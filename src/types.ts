@@ -16,6 +16,13 @@ import type { AsyncExpectation, Expectation, RenderedFrameExpectation } from "./
  */
 export type TestStatus = "passed" | "failed" | "timed-out" | "skipped" | "blocked";
 
+/**
+ * What a conformance test claims to prove. `pass` is the ordinary case; the
+ * others let a spec prove a refusal or an unsupported path without the run
+ * reporting it as an ordinary pass.
+ */
+export type ConformanceExpectation = "pass" | "unsupported" | "refused" | "unknown";
+
 /** How the session was torn down, separately from how the test body went. */
 export type CleanupOutcome =
   | { readonly status: "ok"; readonly quit: boolean }
@@ -77,6 +84,10 @@ export type TestDeclaration = {
   readonly timeoutMs: number | undefined;
   /** Resolved lazily so `test.skip` and focus filters work. */
   readonly skip: boolean;
+  /** Capability IDs this test is evidence for, in ae-devtools catalog grammar. */
+  readonly capabilities: readonly string[];
+  /** Conformance claim this test is allowed to make. */
+  readonly conformance?: ConformanceExpectation;
 };
 
 export type TestResultExtras = {
@@ -84,6 +95,41 @@ export type TestResultExtras = {
   readonly cleanup?: CleanupOutcome;
   /** Why a "blocked" test was not run. */
   readonly blockedReason?: string;
+};
+
+/** A project fixture this test resolved, and the bytes it had when it did. */
+export type FixtureDigest = {
+  readonly name: string;
+  readonly path: string;
+  /** SHA-256 of the file, or null when it could not be read. */
+  readonly sha256: string | null;
+};
+
+/**
+ * What the test actually ran against, recorded per test.
+ *
+ * `uid` is the uid of the process that ran the test body — inside an isolated
+ * session that is the session's own account, so the record says which account
+ * saw these results. `asid` is the audit session id of that account's GUI
+ * session (`launchctl print gui/<uid>`); null when it could not be read, which
+ * is also the answer on any platform other than macOS.
+ */
+export type SessionFacts = {
+  readonly uid: number | null;
+  readonly asid: number | null;
+  /** The host's own report about itself, from the launch probe. */
+  readonly ae: { readonly version: string; readonly build?: string } | null;
+  /** Static host methods this project's host script declared. */
+  readonly extensions: readonly string[];
+  readonly fixtures: readonly FixtureDigest[];
+  /**
+   * The kind of transport the session ran on: the injected transport's own
+   * `kind` (`fake-in-process` is ae-a8n's fake host, `script-invocation` the
+   * built-in real-AE transport), or "script-invocation" when no transport
+   * was injected. Absent or null means provenance could not be proven —
+   * never treat it as real.
+   */
+  readonly transport?: string | null;
 };
 
 export type TestFailure = {
@@ -95,6 +141,13 @@ export type TestFailure = {
   readonly lastOperations: readonly string[];
   /** Where it failed: starting the session, the test body, or teardown. */
   readonly phase?: "launch" | "body" | "cleanup";
+  /**
+   * Set when the session was refused because this run did not start its host:
+   * "attached" when an After Effects was already running, "unknown" when
+   * ownership could not be decided. The distinction is the reader's, so it is
+   * structured rather than left inside the message.
+   */
+  readonly ownership?: { readonly kind: "attached" | "unknown"; readonly evidence: string };
 };
 
 export type TestResult = {
@@ -105,6 +158,12 @@ export type TestResult = {
   readonly durationMs: number;
   readonly failure?: TestFailure;
   readonly artifacts: readonly Artifact[];
+  /** Absent when no session was opened. */
+  readonly session?: SessionFacts;
+  /** Capability IDs this result is evidence for. */
+  readonly capabilities: readonly string[];
+  /** Conformance claim this test was allowed to make. */
+  readonly conformance?: ConformanceExpectation;
 } & TestResultExtras;
 
 export type RunSummary = {
@@ -112,6 +171,12 @@ export type RunSummary = {
   readonly durationMs: number;
   readonly resultsDir: string;
   readonly reportPath: string;
+  /** Present when the run was asked for conformance evidence. */
+  readonly conformancePath?: string;
+  /** `conformance.json`'s own ok flag, when conformance evidence was written. */
+  readonly conformanceOk?: boolean;
+  /** True when filters (or empty spec files) selected zero tests to run. */
+  readonly noTestsSelected?: boolean;
 };
 
 export type { RenderedFrame, TraceEvent };

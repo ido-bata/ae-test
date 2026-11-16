@@ -24,9 +24,22 @@ Options:
   --projects-dir <dir>    Where .aep fixtures live (default: fixtures)
   --timeout <ms>          Per-test budget (default: 60000)
   --grep <substring>      Only run tests whose title contains this
+  --capability <id>       Only run tests declaring this capability ID
+                          (repeatable)
   --update-snapshots      Record snapshot baselines instead of comparing
+  --host-script <file>    Host script built by "ae-a8n extension build", so a
+                          project's own static host methods can be called
   --fake-host             Run against the in-repo fake After Effects host
                           instead of a real installation
+  --conformance           Write conformance.json evidence beside report.json
+  --capability-catalog <path>  ae-devtools catalog.json to validate capability IDs
+  --source-sha <sha>      Git SHA of the code under test for the evidence record
+  --run-id <id>           Conformance run id (default: generated)
+  --conformance-out <path>  Write conformance evidence here instead
+  --plugin-binary <path>  Plugin binary under test; hashed into the evidence
+                          (repeatable)
+  --sdk-binary <path>     SDK build artifact under test; hashed into the
+                          evidence (repeatable)
   -h, --help              Show this message
 `;
 
@@ -35,8 +48,17 @@ type CliOptions = {
   projectsDir?: string;
   timeoutMs?: number;
   grep?: string;
+  capabilities?: string[];
   updateSnapshots?: boolean;
+  hostScript?: string;
   fakeHost?: boolean;
+  conformance?: boolean;
+  capabilityCatalog?: string;
+  sourceSha?: string;
+  runId?: string;
+  conformanceOut?: string;
+  pluginBinaries?: string[];
+  sdkBinaries?: string[];
 };
 
 type Parsed = {
@@ -93,6 +115,57 @@ function parse(argv: readonly string[]): Parsed {
         options.grep = value;
         break;
       }
+      case "--capability": {
+        const value = next();
+        if (value === undefined) return { files, options, error: "--capability needs a value" };
+        (options.capabilities ??= []).push(value);
+        break;
+      }
+      case "--host-script": {
+        const value = next();
+        if (value === undefined) return { files, options, error: "--host-script needs a value" };
+        options.hostScript = value;
+        break;
+      }
+      case "--conformance":
+        options.conformance = true;
+        break;
+      case "--capability-catalog": {
+        const value = next();
+        if (value === undefined) return { files, options, error: "--capability-catalog needs a value" };
+        options.capabilityCatalog = value;
+        break;
+      }
+      case "--source-sha": {
+        const value = next();
+        if (value === undefined) return { files, options, error: "--source-sha needs a value" };
+        options.sourceSha = value;
+        break;
+      }
+      case "--run-id": {
+        const value = next();
+        if (value === undefined) return { files, options, error: "--run-id needs a value" };
+        options.runId = value;
+        break;
+      }
+      case "--conformance-out": {
+        const value = next();
+        if (value === undefined) return { files, options, error: "--conformance-out needs a value" };
+        options.conformanceOut = value;
+        break;
+      }
+      case "--plugin-binary": {
+        const value = next();
+        if (value === undefined) return { files, options, error: "--plugin-binary needs a value" };
+        (options.pluginBinaries ??= []).push(value);
+        break;
+      }
+      case "--sdk-binary": {
+        const value = next();
+        if (value === undefined) return { files, options, error: "--sdk-binary needs a value" };
+        (options.sdkBinaries ??= []).push(value);
+        break;
+      }
       default:
         if (arg.startsWith("-")) {
           return { files, options, error: `unknown option: ${arg}` };
@@ -124,6 +197,18 @@ async function main(): Promise<number> {
     process.stderr.write(`test file not found: ${missing.join(", ")}\n`);
     return 2;
   }
+  if (
+    options.conformance !== true &&
+    (options.capabilityCatalog !== undefined ||
+      options.sourceSha !== undefined ||
+      options.runId !== undefined ||
+      options.conformanceOut !== undefined ||
+      options.pluginBinaries !== undefined ||
+      options.sdkBinaries !== undefined)
+  ) {
+    process.stderr.write("conformance options require --conformance\n\n" + USAGE);
+    return 2;
+  }
 
   // The fake host is opt-in and explicit. Silently substituting a fake for a
   // real After Effects would be the worst possible default: every test would
@@ -136,8 +221,33 @@ async function main(): Promise<number> {
     ...(options.projectsDir === undefined ? {} : { projectsDir: options.projectsDir }),
     ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
     ...(options.grep === undefined ? {} : { grep: options.grep }),
+    ...(options.capabilities === undefined
+      ? {}
+      : { capabilityFilter: options.capabilities }),
     ...(options.updateSnapshots === undefined ? {} : { updateSnapshots: options.updateSnapshots }),
+    ...(options.hostScript === undefined ? {} : { hostScript: options.hostScript }),
     ...(transport === undefined ? {} : { transport }),
+    ...(options.conformance === true
+      ? {
+          conformance: {
+            host: options.fakeHost === true ? ("fake" as const) : ("real" as const),
+            ...(options.capabilityCatalog === undefined
+              ? {}
+              : { catalogPath: options.capabilityCatalog }),
+            ...(options.sourceSha === undefined ? {} : { sourceSha: options.sourceSha }),
+            ...(options.runId === undefined ? {} : { runId: options.runId }),
+            ...(options.conformanceOut === undefined
+              ? {}
+              : { outPath: options.conformanceOut }),
+            ...(options.pluginBinaries === undefined
+              ? {}
+              : { pluginBinaries: options.pluginBinaries }),
+            ...(options.sdkBinaries === undefined
+              ? {}
+              : { sdkBinaries: options.sdkBinaries }),
+          },
+        }
+      : {}),
     onResult: (result) => {
       if (result.status === "failed" || result.status === "timed-out") {
         process.stderr.write(`  ✗ ${result.title}\n`);

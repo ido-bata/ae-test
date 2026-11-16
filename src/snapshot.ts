@@ -1,18 +1,26 @@
 /**
  * Snapshot baselines for rendered output.
  *
- * Renders are compared by SHA-256 of the file bytes, not by storing the PNG:
- * a baseline should be reviewable in a diff, and a wall of base64 is not. The
- * rendered file itself is already kept as an artifact of the run, so a
- * mismatch is always inspectable.
+ * Snapshot baselines record the rendered bytes' SHA-256 and keep a copy of the
+ * baseline PNG. The digest is the default exact comparison; when a caller
+ * supplies pixel tolerances and the digest differs, the PNG copy is decoded
+ * for a per-pixel comparison. The rendered file itself is already kept as an
+ * artifact of the run, so a mismatch is always inspectable.
  */
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import type { RenderedFrame } from "@ido-bata/ae-a8n";
 
 import { AssertionError } from "./expect.js";
+import {
+  ImageComparisonError,
+  comparePngFiles,
+  formatImageDifference,
+  type ImageComparisonOptions,
+  type ImageDifference,
+} from "./image.js";
 
 export type SnapshotStoreOptions = {
   /** Directory holding baseline digests. */
@@ -44,11 +52,16 @@ export class SnapshotStore {
     return this.#update;
   }
 
-  match(name: string, digest: string, frame: RenderedFrame): Promise<void> {
+  match(
+    name: string,
+    digest: string,
+    frame: RenderedFrame,
+    compareOptions?: ImageComparisonOptions,
+  ): Promise<void> {
     const path = this.#pathFor(name);
 
     if (this.#update) {
-      this.#write(path, digest);
+      this.#write(path, digest, name, frame);
       return Promise.resolve();
     }
 
@@ -65,13 +78,50 @@ export class SnapshotStore {
       );
     }
 
-    if (baseline !== digest) {
+    if (baseline === digest) {
+      this.#matched += 1;
+      return Promise.resolve();
+    }
+
+    if (compareOptions === undefined) {
       return Promise.reject(
         new AssertionError(
           `rendered output for "${name}" does not match its baseline.\n` +
             `  expected sha256 ${baseline}\n` +
             `  received sha256 ${digest}\n` +
-            `  render: ${frame.path}`,
+            `  render: ${frame.path}\n` +
+            `Pass pixel tolerances to compare decoded pixels against ${this.#pngPathFor(name)}.`,
+          frame,
+        ),
+      );
+    }
+
+    const baselinePng = this.#pngPathFor(name);
+    if (!existsSync(baselinePng)) {
+      return Promise.reject(
+        new AssertionError(
+          `snapshot "${name}" has a digest baseline but no image baseline at ${baselinePng}.\n` +
+            `Run with --update-snapshots to record the PNG used for pixel comparison.`,
+          frame,
+        ),
+      );
+    }
+
+    let difference: ImageDifference;
+    try {
+      difference = comparePngFiles(baselinePng, frame.path, compareOptions);
+    } catch (error) {
+      const message = error instanceof ImageComparisonError ? error.message : String(error);
+      return Promise.reject(new AssertionError(`could not compare snapshot "${name}": ${message}`, frame));
+    }
+
+    if (!difference.passed) {
+      return Promise.reject(
+        new AssertionError(
+          `rendered output for "${name}" does not match its baseline within tolerance.\n` +
+            `  expected sha256 ${baseline}\n` +
+            `  received sha256 ${digest}\n` +
+            formatImageDifference(difference, compareOptions),
           frame,
         ),
       );
@@ -81,11 +131,20 @@ export class SnapshotStore {
   }
 
   #pathFor(name: string): string {
-    const safe = name.replace(/[^a-zA-Z0-9._-]+/g, "-");
-    return join(this.#dir, `${this.#testId}--${safe}.sha256`);
+    return join(this.#dir, `${this.#baseFor(name)}.sha256`);
   }
 
-  #write(path: string, digest: string): void {
+  #pngPathFor(name: string): string {
+    return join(this.#dir, `${this.#baseFor(name)}.png`);
+  }
+
+  #baseFor(name: string): string {
+    const safe = name.replace(/[^a-zA-Z0-9._-]+/g, "-");
+    return `${this.#testId}--${safe}`;
+  }
+
+  #write(path: string, digest: string, name: string, frame: RenderedFrame): void {
+    copyFileSync(frame.path, this.#pngPathFor(name));
     writeFileSync(path, `${digest}\n`, "utf-8");
     this.#matched += 1;
   }

@@ -38,6 +38,11 @@ export function formatFailure(result: TestResult): string {
     // The body's failure is the reason; the teardown failure still happened.
     lines.push(`    teardown also failed: ${result.cleanup.name}: ${result.cleanup.message}`);
   }
+  if (result.failure.ownership !== undefined) {
+    lines.push(
+      `    host ownership: ${result.failure.ownership.kind} (${result.failure.ownership.evidence})`,
+    );
+  }
   if (result.failure.lastOperations.length > 0) {
     lines.push("    last operations:");
     for (const op of result.failure.lastOperations) {
@@ -69,7 +74,15 @@ export function formatSummary(summary: RunSummary): string {
   return [
     "",
     `${parts.join(", ")} in ${summary.durationMs}ms`,
+    ...(summary.noTestsSelected === true ? ["no tests selected"] : []),
     `report: ${summary.reportPath}`,
+    ...(summary.conformancePath === undefined
+      ? []
+      : [
+          `conformance: ${summary.conformancePath} (${
+            summary.conformanceOk === false ? "not ok" : "ok"
+          })`,
+        ]),
   ].join("\n");
 }
 
@@ -87,7 +100,11 @@ export function formatRun(summary: RunSummary): string {
 }
 
 export function exitCodeFor(summary: RunSummary): number {
-  return hasFailures(summary.results) ? 1 : 0;
+  return hasFailures(summary.results) ||
+    summary.conformanceOk === false ||
+    summary.noTestsSelected === true
+    ? 1
+    : 0;
 }
 
 function indent(lines: readonly string[], prefix: string): string[] {

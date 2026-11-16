@@ -123,7 +123,9 @@ describe("vertical slice", () => {
     // plugin regression looks like from the harness's side.
     const snapshotDir = join(resultsDir, "__snapshots__");
     const { readdirSync, writeFileSync } = await import("node:fs");
-    const baseline = readdirSync(snapshotDir).find((name) => name.includes("main-frame-0"));
+    const baseline = readdirSync(snapshotDir).find(
+      (name) => name.includes("main-frame-0") && name.endsWith(".sha256"),
+    );
     expect(baseline).toBeDefined();
     writeFileSync(join(snapshotDir, baseline as string), `${"0".repeat(64)}\n`, "utf-8");
     clearRegistry();

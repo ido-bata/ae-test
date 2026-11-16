@@ -1,5 +1,112 @@
 # Changelog
 
+## 0.1.0-alpha.1 (unreleased)
+
+Depends on `@ido-bata/ae-a8n` `0.1.0-alpha.2` exactly — the first published
+version that carries the static host extension API, and the reason the
+extension cases now run instead of skipping. `0.1.0-alpha.2` also carries the
+ae-a8n `0.1.0-alpha.1` fixes noted below.
+
+### Added
+
+- `FixtureOptions.hostScript` and `RunOptions.hostScript`: a host script built
+  by `ae-a8n extension build`, forwarded unchanged to `AfterEffects.launch`,
+  so a suite can call the static host methods its own project declares
+  (`ae.call`). The fixture never reads or rewrites the script, and the fake
+  host answers the same calls, so the wiring is testable without After
+  Effects. `ae-test --host-script <file>` carries the same option through the
+  CLI.
+- `FixtureOptions.installDir` and `FixtureOptions.hostEnvironment` (also on
+  `RunOptions`): forwarded unchanged to `AfterEffects.launch`, for a machine
+  with more than one installation and for variables the host needs in its own
+  process.
+- `report.json` records, per test, what the test ran against
+  (`TestResult.session`): the uid of the process that ran it and that
+  account's audit session id on macOS (`launchctl print gui/<uid>`), the
+  host's own version and build from the launch probe, the static methods the
+  host script declared, and a SHA-256 for every project fixture the test
+  resolved. A fact that cannot be measured is `null` or empty, never a
+  reason to lose the test's own result.
+- A refusal for an After Effects this run did not start is now structured in
+  the report (`failure.ownership`): `attached` (a host was already running
+  and was left untouched) is kept apart from `unknown` (ownership could not be
+  decided). `HostNotOwnedError` is exported and carries `kind` and
+  `evidence`.
+- Pixel-level render comparison: `expectFrame(frame).toMatchFrame(other,
+  options)` compares two PNGs as RGBA, and `toMatchSnapshot(name, options)`
+  uses the same comparison after a digest mismatch. Options are `threshold`
+  (per-channel delta), `maxDiffPixels` and `maxDiffPixelRatio`; snapshot
+  updates now store the baseline PNG beside its SHA-256. Exact hash
+  comparison remains the default.
+- Conformance evidence producer for the ae-devtools capability contract:
+  `test(..., { capabilities, conformance })` declares catalog IDs and the
+  strongest claim a spec may make, and `run({ conformance })` /
+  `ae-test --conformance` writes `conformance.json` with per-test records.
+  Classification keeps `unsupported`, `refused`, `unknown`, `blocked`,
+  `not-run`, `failed`, `fake-only` and `real-host-verified` distinct; a
+  fake-host pass never promotes to real-host verification, catalog IDs are
+  checked against a supplied `catalog.json`, and artifact hashes let a
+  consumer recompute the evidence. Non-promotable classifications record
+  `UNKNOWN` rather than `PASS`, environment fields that lack evidence stay
+  `unknown`/`unproven`, and a non-ok `conformance.json` makes the CLI exit 1.
+- Capability-driven selection for conformance runs: `RunOptions.capabilityFilter`
+  and `ae-test --capability <id>` (repeatable) run only tests that declare at
+  least one of the listed capability IDs. `fixtures/conformance/capability-catalog.json`
+  is a checked-in manifest with OS and AE-version compatibility rows for the
+  plugin-render capability set.
+- An After Effects whose ownership cannot be decided now records conformance
+  classification `unknown` / result `UNKNOWN`; only `ownership.kind ===
+  "attached"` records `refused`.
+- Catalog environment compatibility: when `--capability-catalog` is
+  supplied, a test whose every declared capability is incompatible with this
+  OS/arch is `blocked` before launch, and each conformance record flags
+  capabilities incompatible with the observed AE version
+  (`environment-incompatible`) or not fully evaluable
+  (`environment-unverified`).
+- `conformance.json` aggregates evidence for the release-candidate
+  same-bytes check: `binaries.plugin` / `binaries.sdk` hash the files cited
+  by `--plugin-binary` / `--sdk-binary` (repeatable), and `summary.matrix`
+  groups records by observed OS × AE version.
+
+### Changed
+
+- A passed test that never launched a session no longer classifies as
+  `fake-only` or `real-host-verified`; it records `UNKNOWN` with a
+  `session-not-launched` diagnostic.
+- Host promotion now requires proven transport provenance: `run()` records
+  the session transport's `kind` in session facts, and classification uses
+  it — `fake-in-process` is `fake-only`, `script-invocation` is
+  `real-host-verified`, anything else is `unknown` and never promotes. A
+  `conformance.host` declaration that disagrees with the observed
+  transport adds a `host-provenance-mismatch` diagnostic and makes the
+  report not ok.
+- A run whose `--grep`/`--capability` filters select zero tests exits 1
+  (`noTestsSelected`) instead of reporting a green run, and `conformance.json`
+  reports not-ok with a `no-tests-selected` diagnostic.
+
+- `test/extension.test.ts` runs against the published dependency: the two
+  cases that were kept and skipped on `0.1.0-alpha.0` now pass, and the CLI
+  case proves `--host-script` reaches the session and the report names the
+  declared method.
+- Through `ae` (ae-a8n `0.1.0-alpha.1`+): `ae.openProject()` rejects a
+  relative path with a `TypeError` before sending anything (ae-a8n#34);
+  `parameter(...).get()` and `set()` are typed `number | readonly number[]`
+  (ae-a8n#21); `parameter(...).get()` on a property group rejects with
+  `PropertyHasNoValueError` (ae-a8n#18); `set()` checks the value's shape on
+  the host and rejects a mismatch with `ParameterValueError` (ae-a8n#21);
+  `PropertyInfo` is a union on `kind` and `valueType` (ae-a8n#18/#21);
+  `effect.parameters()` lists properties without a value (ae-a8n#18);
+  `ae.project()` returns the open project without opening anything; and
+  per-call `timeoutMs` is available on `openProject`, `renderFrame` and
+  `project` (ae-a8n#22).
+
+### Not yet
+
+- Real After Effects verification of this version. The macOS real-host table
+  in [docs/verification.md](docs/verification.md) still names
+  `0.1.0-alpha.0`; nothing here has been run against a real host yet, and an
+  isolated-session run needs the helper account described there.
+
 ## 0.1.0-alpha.0
 
 First alpha, published under the `next` dist-tag. Depends on

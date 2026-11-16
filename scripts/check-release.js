@@ -11,7 +11,7 @@
  * - A tag, when given, must be exactly `v<version>`.
  * - The exported AE_TEST_VERSION constant must equal the package version.
  */
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -31,8 +31,13 @@ if (manifest.publishConfig?.provenance !== false) {
 if (manifest.publishConfig?.access !== "public") {
   problems.push("publishConfig.access must be public for a scoped package");
 }
-const source = readFileSync(join(root, "src", "index.ts"), "utf-8");
-const constant = /export const AE_TEST_VERSION = "([^"]+)"/.exec(source)?.[1];
+const versionSources = ["index.ts", "version.ts"]
+  .map((name) => join(root, "src", name))
+  .filter((path) => existsSync(path))
+  .map((path) => readFileSync(path, "utf-8"));
+const constant = versionSources
+  .map((source) => /export const AE_TEST_VERSION = "([^"]+)"/.exec(source)?.[1])
+  .find((value) => value !== undefined);
 if (constant !== version) {
   problems.push(`AE_TEST_VERSION is ${constant}, package.json says ${version}`);
 }

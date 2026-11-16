@@ -13,6 +13,13 @@ import { isDeepStrictEqual } from "node:util";
 
 import type { RenderedFrame } from "@ido-bata/ae-a8n";
 
+import {
+  ImageComparisonError,
+  comparePngFiles,
+  formatImageDifference,
+  type ImageComparisonOptions,
+  type ImageDifference,
+} from "./image.js";
 import type { SnapshotStore } from "./snapshot.js";
 
 export class AssertionError extends Error {
@@ -162,9 +169,32 @@ export class RenderedFrameExpectation {
   }
 
   /** Compares the rendered bytes against a stored baseline. */
-  async toMatchSnapshot(name: string): Promise<void> {
+  async toMatchSnapshot(name: string, options?: ImageComparisonOptions): Promise<void> {
     const digest = this.#digest();
-    await this.#snapshots.match(name, digest, this.#frame);
+    await this.#snapshots.match(name, digest, this.#frame, options);
+  }
+
+  /** Compares this frame's pixels against another rendered frame. */
+  toMatchFrame(expected: RenderedFrame, options?: ImageComparisonOptions): Promise<void> {
+    let difference: ImageDifference;
+    try {
+      difference = comparePngFiles(expected.path, this.#frame.path, options);
+    } catch (error) {
+      const message = error instanceof ImageComparisonError ? error.message : String(error);
+      return Promise.reject(
+        new AssertionError(`could not compare rendered frames: ${message}`, this.#frame),
+      );
+    }
+    if (!difference.passed) {
+      return Promise.reject(
+        new AssertionError(
+          `rendered frame does not match the expected frame.\n` +
+            formatImageDifference(difference, options),
+          this.#frame,
+        ),
+      );
+    }
+    return Promise.resolve();
   }
 
   #digest(): string {

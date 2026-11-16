@@ -15,13 +15,21 @@ import { pathToFileURL } from "node:url";
 import type { AfterEffects, HostTransport } from "@ido-bata/ae-a8n";
 
 import { expect, expectFrame } from "./expect.js";
-import { TestFixture, type FixtureOptions } from "./fixture.js";
+import {
+  environmentBlockReason,
+  loadCapabilityCatalog,
+  writeConformanceReport,
+  type CapabilityCatalogIndex,
+  type ConformanceRunOptions,
+} from "./conformance.js";
+import { HostNotOwnedError, TestFixture, type FixtureOptions } from "./fixture.js";
 import { DEFAULT_TIMEOUT_MS, clearRegistry, setDeclaringFile } from "./registry.js";
 import { SnapshotStore } from "./snapshot.js";
 import type {
   Artifact,
   CleanupOutcome,
   RunSummary,
+  SessionFacts,
   TestContext,
   TestDeclaration,
   TestFailure,
@@ -44,10 +52,20 @@ export type RunOptions = {
   readonly updateSnapshots?: boolean;
   /** Substring filter over test titles. */
   readonly grep?: string;
+  /** Only run tests declaring at least one of these capability IDs. */
+  readonly capabilityFilter?: readonly string[];
   /** Transport for every session; omit to use a real After Effects. */
   readonly transport?: HostTransport;
+  /** Host script with this project's static extension methods, if any. */
+  readonly hostScript?: string;
+  /** Explicit After Effects installation; omit to discover one. */
+  readonly installDir?: string;
+  /** Variables set inside the After Effects process before anything else runs. */
+  readonly hostEnvironment?: Readonly<Record<string, string>>;
   /** Called after each test, for progress output. */
   readonly onResult?: (result: TestResult) => void;
+  /** Write ae-devtools-schema conformance evidence for this run. */
+  readonly conformance?: ConformanceRunOptions;
 };
 
 /** A test that exceeded its budget. The session is torn down regardless. */
@@ -86,14 +104,24 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   mkdirSync(resultsDir, { recursive: true });
   mkdirSync(snapshotsDir, { recursive: true });
 
+  // A bad catalog is a setup error: fail before any test launches a session.
+  const conformanceCatalog: CapabilityCatalogIndex | undefined =
+    options.conformance?.catalogPath === undefined
+      ? undefined
+      : loadCapabilityCatalog(options.conformance.catalogPath);
+
   // A run owns the registry it executes. Without this, a second `run()` in
   // the same process would see the first run's registrations plus its own and
   // report duplicates.
   clearRegistry();
   await loadTestFiles(options.files);
 
+  const capabilityFilter = options.capabilityFilter;
   const declared = registeredTests().filter(
-    (candidate) => options.grep === undefined || candidate.title.includes(options.grep),
+    (candidate) =>
+      (options.grep === undefined || candidate.title.includes(options.grep)) &&
+      (capabilityFilter === undefined ||
+        candidate.capabilities.some((id) => capabilityFilter.includes(id))),
   );
 
   const results: TestResult[] = [];
@@ -104,16 +132,21 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   // worse, let it pass against the wrong state.
   let hostUnknown: string | undefined;
   for (const declaration of declared) {
-    if (hostUnknown !== undefined && !declaration.skip) {
-      const blocked: TestResult = {
-        id: declaration.id,
-        title: declaration.title,
-        file: declaration.file,
-        status: "blocked",
-        durationMs: 0,
-        artifacts: [],
-        blockedReason: hostUnknown,
-      };
+    // A catalog can declare a capability unsupported on this OS/arch. When
+    // every capability the test claims is incompatible here, running it
+    // would only manufacture a failure (or worse, a pass) against an
+    // environment the catalog says cannot work — report it blocked instead.
+    const environmentBlock =
+      conformanceCatalog === undefined || declaration.skip
+        ? undefined
+        : environmentBlockReason(declaration.capabilities, conformanceCatalog, {
+            os: process.platform,
+            arch: process.arch,
+          });
+    const blockReason =
+      environmentBlock ?? (hostUnknown !== undefined && !declaration.skip ? hostUnknown : undefined);
+    if (blockReason !== undefined) {
+      const blocked = blockedResult(declaration, blockReason);
       results.push(blocked);
       options.onResult?.(blocked);
       continue;
@@ -125,6 +158,11 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       ...(options.projectsDir === undefined ? {} : { projectsDir: options.projectsDir }),
       ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
       ...(options.transport === undefined ? {} : { transport: options.transport }),
+      ...(options.hostScript === undefined ? {} : { hostScript: options.hostScript }),
+      ...(options.installDir === undefined ? {} : { installDir: options.installDir }),
+      ...(options.hostEnvironment === undefined
+        ? {}
+        : { hostEnvironment: options.hostEnvironment }),
     });
     results.push(result);
     options.onResult?.(result);
@@ -136,14 +174,41 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   }
 
   const reportPath = join(resultsDir, "report.json");
-  const summary: RunSummary = {
+  const baseSummary: RunSummary = {
     results,
     durationMs: Date.now() - began,
     resultsDir,
     reportPath,
+    // Filters that matched nothing must not read as a green run.
+    ...(declared.length === 0 ? { noTestsSelected: true } : {}),
+  };
+  const conformance =
+    options.conformance === undefined
+      ? undefined
+      : writeConformanceReport(baseSummary, options.conformance, conformanceCatalog);
+  const summary: RunSummary = {
+    ...baseSummary,
+    ...(conformance === undefined
+      ? {}
+      : { conformancePath: conformance.path, conformanceOk: conformance.report.ok }),
   };
   writeFileSync(reportPath, `${JSON.stringify(summary, null, 2)}\n`, "utf-8");
   return summary;
+}
+
+/** A test kept out of the run, with the reason it was kept out. */
+function blockedResult(declaration: TestDeclaration, reason: string): TestResult {
+  return {
+    id: declaration.id,
+    title: declaration.title,
+    file: declaration.file,
+    status: "blocked",
+    durationMs: 0,
+    artifacts: [],
+    blockedReason: reason,
+    capabilities: declaration.capabilities,
+    ...(declaration.conformance === undefined ? {} : { conformance: declaration.conformance }),
+  };
 }
 
 type OneTestOptions = {
@@ -153,6 +218,9 @@ type OneTestOptions = {
   /** Run-level default budget; a test may override it. */
   timeoutMs?: number;
   transport?: HostTransport;
+  hostScript?: string;
+  installDir?: string;
+  hostEnvironment?: Readonly<Record<string, string>>;
   updateSnapshots: boolean;
 };
 
@@ -171,6 +239,10 @@ async function runOne(
       status: "skipped",
       durationMs: 0,
       artifacts: [],
+      capabilities: declaration.capabilities,
+      ...(declaration.conformance === undefined
+        ? {}
+        : { conformance: declaration.conformance }),
     };
   }
 
@@ -186,6 +258,11 @@ async function runOne(
     ...(options.projectsDir === undefined ? {} : { projectsDir: options.projectsDir }),
     ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
     ...(options.transport === undefined ? {} : { transport: options.transport }),
+    ...(options.hostScript === undefined ? {} : { hostScript: options.hostScript }),
+    ...(options.installDir === undefined ? {} : { installDir: options.installDir }),
+    ...(options.hostEnvironment === undefined
+      ? {}
+      : { hostEnvironment: options.hostEnvironment }),
   };
   const fixture = new TestFixture(testInfo, fixtureOptions);
   const snapshots = new SnapshotStore({
@@ -199,6 +276,7 @@ async function runOne(
   let failure: TestFailure | undefined;
   let artifacts: Artifact[] = [];
   let cleanup: CleanupOutcome | undefined;
+  let sessionFacts: SessionFacts | undefined;
   let launched = false;
 
   try {
@@ -224,6 +302,11 @@ async function runOne(
     failure = { ...describeFailure(error, session), phase: launched ? "body" : "launch" };
   } finally {
     artifacts = fixture.collectArtifacts(session);
+    // Read before teardown: version, extension methods and the session's own
+    // identity are facts about the session that was used, and they disappear
+    // with it. Every read inside is guarded, so a fact nobody can measure is
+    // recorded as absent rather than replacing the test's own result.
+    sessionFacts = fixture.sessionFacts(session);
     cleanup = await fixture.teardown();
   }
 
@@ -250,7 +333,12 @@ async function runOne(
     durationMs: Date.now() - began,
     ...(failure === undefined ? {} : { failure }),
     ...(cleanup === undefined ? {} : { cleanup }),
+    ...(sessionFacts === undefined ? {} : { session: sessionFacts }),
     artifacts,
+    capabilities: declaration.capabilities,
+    ...(declaration.conformance === undefined
+      ? {}
+      : { conformance: declaration.conformance }),
   };
 }
 
@@ -295,10 +383,18 @@ function describeFailure(error: unknown, session: AfterEffects | undefined): Tes
       : session.traceEvents.slice(-5).map((event) => `${event.op} (${event.status})`);
 
   const stack = error instanceof Error ? error.stack : undefined;
+  // The refusal's own kind is structured data, not only text: a report reader
+  // has to tell "someone's AE was already running" from "nobody can say whose
+  // AE this is" without parsing an English sentence.
+  const ownership =
+    error instanceof HostNotOwnedError
+      ? { kind: error.kind, evidence: error.evidence }
+      : undefined;
   return {
     name,
     message,
     ...(stack === undefined ? {} : { stack }),
+    ...(ownership === undefined ? {} : { ownership }),
     lastOperations,
   };
 }

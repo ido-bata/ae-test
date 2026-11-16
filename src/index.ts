@@ -33,8 +33,40 @@ export {
 } from "./expect.js";
 export { SnapshotStore } from "./snapshot.js";
 export type { SnapshotStoreOptions } from "./snapshot.js";
+export type { ImageComparisonOptions, ImageDifference } from "./image.js";
 
-export { TestFixture } from "./fixture.js";
+export {
+  buildConformanceReport,
+  environmentBlockReason,
+  evaluateCompatibility,
+  hostProvenance,
+  loadCapabilityCatalog,
+  writeConformanceReport,
+  ConformanceError,
+  CAPABILITY_CATALOG_SCHEMA,
+  CONFORMANCE_RECORD_VERSION,
+  CONFORMANCE_REPORT_SCHEMA,
+} from "./conformance.js";
+export type {
+  CapabilityCatalogIndex,
+  CompatibilityEnvironment,
+  CompatibilityVerdict,
+  ConformanceArtifactHash,
+  ConformanceBinaryHash,
+  ConformanceCatalogSummary,
+  ConformanceClassification,
+  ConformanceDiagnostic,
+  ConformanceHost,
+  ConformanceMatrixCell,
+  ConformanceRecord,
+  ConformanceReport,
+  ConformanceResult,
+  ConformanceRunOptions,
+  ConformanceVerification,
+  HostProvenance,
+} from "./conformance.js";
+
+export { HostNotOwnedError, TestFixture } from "./fixture.js";
 export type { FixtureOptions } from "./fixture.js";
 
 export { run, loadTestFiles, countByStatus, hasFailures, DEFAULT_RESULTS_DIR } from "./runner.js";
@@ -50,8 +82,12 @@ export {
 
 export type {
   Artifact,
+  ConformanceExpectation,
   Fixture,
+  FixtureDigest,
+  RenderedFrame,
   RunSummary,
+  SessionFacts,
   TestContext,
   TestDeclaration,
   TestFailure,
@@ -61,4 +97,4 @@ export type {
   TestStatus,
 } from "./types.js";
 
-export const AE_TEST_VERSION = "0.1.0-alpha.0";
+export { AE_TEST_VERSION } from "./version.js";
