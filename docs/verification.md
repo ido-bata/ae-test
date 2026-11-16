@@ -10,12 +10,13 @@ nothing about the other.
 
 - `npm ci` with `@ido-bata/ae-a8n@0.1.0-alpha.2` from registry.npmjs.org,
   integrity checked against `package-lock.json`, recorded in the job summary;
-- build, typecheck, lint, 134 tests (runner, fixtures, teardown, snapshots and
-  pixel-tolerant image comparison, conformance evidence classification and
-  non-ok exit status, reports, the dependency pin, the version constant, the README examples
-  type-checked against `dist`, and the static-host-extension cases — those
-  now run, because the pinned version is the first published one with the
-  extension API);
+- build, typecheck, lint, 137 tests (runner, fixtures, teardown, snapshots and
+  pixel-tolerant image comparison, conformance evidence classification,
+  non-ok exit status, capability-ID selection, the checked-in capability
+  manifest, reports, the dependency pin, the version constant, the README
+  examples type-checked against `dist`, and the static-host-extension cases —
+  those now run, because the pinned version is the first published one with
+  the extension API);
 - the CLI against `specs/plugin-render.spec.ts` with `--fake-host`, recording
   then comparing snapshots;
 - `scripts/check-packed-package.js`: the packed tarball installed into an

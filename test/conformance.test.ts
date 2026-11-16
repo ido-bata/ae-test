@@ -146,6 +146,25 @@ describe("conformance classification", () => {
     expect(report.ok).toBe(false);
   });
 
+  it("treats undecidable ownership as unknown, not refused", () => {
+    const report = reportFor([
+      result({
+        id: "unknown-ownership#1",
+        status: "failed",
+        failure: {
+          name: "HostNotOwnedError",
+          message: "ownership could not be decided",
+          ownership: { kind: "unknown", evidence: "no pid file" },
+          lastOperations: [],
+        },
+      }),
+    ]);
+
+    expect(report.records[0]?.classification).toBe("unknown");
+    expect(report.records[0]?.result).toBe("UNKNOWN");
+    expect(report.records[0]?.catalogBinding).toBeNull();
+  });
+
   it("records unsupported and refused expectations as their own classes", () => {
     const report = reportFor([
       result({ id: "unsupported#1", conformance: "unsupported" }),
@@ -214,6 +233,22 @@ describe("capability catalog", () => {
     const catalogPath = join(dir, "catalog.json");
     writeFileSync(catalogPath, JSON.stringify({ schema: "other/v1", records: [] }));
     expect(() => loadCapabilityCatalog(catalogPath)).toThrow(/schema/);
+  });
+
+  it("loads the checked-in capability manifest with OS and AE rows", () => {
+    const catalog = loadCapabilityCatalog(
+      resolve(import.meta.dirname, "..", "fixtures", "conformance", "capability-catalog.json"),
+    );
+
+    expect(catalog.recordCount).toBe(CAPABILITY_IDS.length);
+    for (const id of CAPABILITY_IDS) {
+      expect(catalog.records.has(id)).toBe(true);
+    }
+    const render = catalog.records.get("ae.operation.render.frame") as
+      | { compatibility?: { os?: string[]; aeVersions?: string[] } }
+      | undefined;
+    expect(render?.compatibility?.os).toEqual(expect.arrayContaining(["darwin", "win32"]));
+    expect(render?.compatibility?.aeVersions).toEqual(expect.arrayContaining(["26.x"]));
   });
 });
 
@@ -291,5 +326,26 @@ describe("runner integration", () => {
     expect(report.ok).toBe(false);
     expect(summary.conformanceOk).toBe(false);
     expect(exitCodeFor(summary)).toBe(1);
+  });
+
+  it("selects tests by declared capability ID", async () => {
+    const summary = await run({
+      files: [SPEC],
+      resultsDir: join(dir, "results"),
+      projectsDir: PROJECTS_DIR,
+      transport: new FakeAfterEffectsTransport(),
+      updateSnapshots: true,
+      capabilityFilter: ["ae.operation.render.frame"],
+    });
+
+    expect(summary.results.map((result) => result.title)).toEqual([
+      "applies a plugin effect and renders a frame",
+      "the parameter reaches the pixels",
+    ]);
+    expect(
+      summary.results.every((result) =>
+        result.capabilities.includes("ae.operation.render.frame"),
+      ),
+    ).toBe(true);
   });
 });

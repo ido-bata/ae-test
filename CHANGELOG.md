@@ -49,6 +49,14 @@ ae-a8n `0.1.0-alpha.1` fixes noted below.
   consumer recompute the evidence. Non-promotable classifications record
   `UNKNOWN` rather than `PASS`, environment fields that lack evidence stay
   `unknown`/`unproven`, and a non-ok `conformance.json` makes the CLI exit 1.
+- Capability-driven selection for conformance runs: `RunOptions.capabilityFilter`
+  and `ae-test --capability <id>` (repeatable) run only tests that declare at
+  least one of the listed capability IDs. `fixtures/conformance/capability-catalog.json`
+  is a checked-in manifest with OS and AE-version compatibility rows for the
+  plugin-render capability set.
+- An After Effects whose ownership cannot be decided now records conformance
+  classification `unknown` / result `UNKNOWN`; only `ownership.kind ===
+  "attached"` records `refused`.
 
 ### Changed
 

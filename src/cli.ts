@@ -24,6 +24,8 @@ Options:
   --projects-dir <dir>    Where .aep fixtures live (default: fixtures)
   --timeout <ms>          Per-test budget (default: 60000)
   --grep <substring>      Only run tests whose title contains this
+  --capability <id>       Only run tests declaring this capability ID
+                          (repeatable)
   --update-snapshots      Record snapshot baselines instead of comparing
   --host-script <file>    Host script built by "ae-a8n extension build", so a
                           project's own static host methods can be called
@@ -42,6 +44,7 @@ type CliOptions = {
   projectsDir?: string;
   timeoutMs?: number;
   grep?: string;
+  capabilities?: string[];
   updateSnapshots?: boolean;
   hostScript?: string;
   fakeHost?: boolean;
@@ -104,6 +107,12 @@ function parse(argv: readonly string[]): Parsed {
         const value = next();
         if (value === undefined) return { files, options, error: "--grep needs a value" };
         options.grep = value;
+        break;
+      }
+      case "--capability": {
+        const value = next();
+        if (value === undefined) return { files, options, error: "--capability needs a value" };
+        (options.capabilities ??= []).push(value);
         break;
       }
       case "--host-script": {
@@ -192,6 +201,9 @@ async function main(): Promise<number> {
     ...(options.projectsDir === undefined ? {} : { projectsDir: options.projectsDir }),
     ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
     ...(options.grep === undefined ? {} : { grep: options.grep }),
+    ...(options.capabilities === undefined
+      ? {}
+      : { capabilityFilter: options.capabilities }),
     ...(options.updateSnapshots === undefined ? {} : { updateSnapshots: options.updateSnapshots }),
     ...(options.hostScript === undefined ? {} : { hostScript: options.hostScript }),
     ...(transport === undefined ? {} : { transport }),
