@@ -6,8 +6,7 @@
  * artifacts, tear down — no human input anywhere in the loop.
  */
 
-import { existsSync, readFileSync, rmSync } from "node:fs";
-import { mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -22,20 +21,24 @@ const SPEC = resolve(import.meta.dirname, "..", "specs", "plugin-render.spec.ts"
 const PROJECTS_DIR = resolve(import.meta.dirname, "..", "fixtures");
 
 let resultsDir: string;
+let baselineDir: string;
 
 beforeEach(() => {
   clearRegistry();
   resultsDir = mkdtempSync(join(tmpdir(), "ae-test-results-"));
+  baselineDir = mkdtempSync(join(tmpdir(), "ae-test-baselines-"));
 });
 
 afterEach(() => {
   rmSync(resultsDir, { recursive: true, force: true });
+  rmSync(baselineDir, { recursive: true, force: true });
 });
 
 function suiteOptions(overrides: Partial<Parameters<typeof run>[0]> = {}) {
   return {
     files: [SPEC],
     resultsDir,
+    baselineDir,
     projectsDir: PROJECTS_DIR,
     transport: new FakeAfterEffectsTransport(),
     timeoutMs: 20_000,
@@ -120,14 +123,13 @@ describe("vertical slice", () => {
     clearRegistry();
 
     // Re-point the snapshot at a digest that cannot match, which is what a
-    // plugin regression looks like from the harness's side.
-    const snapshotDir = join(resultsDir, "__snapshots__");
-    const { readdirSync, writeFileSync } = await import("node:fs");
-    const baseline = readdirSync(snapshotDir).find(
-      (name) => name.includes("main-frame-0") && name.endsWith(".sha256"),
+    // plugin regression looks like from the harness's side. Baselines live
+    // under <baselineDir>/<environment>/, so find the file recursively.
+    const baseline = findFile(baselineDir, (name) =>
+      name.includes("main-frame-0") && name.endsWith(".sha256"),
     );
     expect(baseline).toBeDefined();
-    writeFileSync(join(snapshotDir, baseline as string), `${"0".repeat(64)}\n`, "utf-8");
+    writeFileSync(baseline as string, `${"0".repeat(64)}\n`, "utf-8");
     clearRegistry();
 
     const third = await run(suiteOptions());
@@ -164,3 +166,17 @@ describe("vertical slice", () => {
     expect(matched.results).toHaveLength(1);
   });
 });
+
+/** First file under `root` whose name matches `predicate`, depth-first. */
+function findFile(root: string, predicate: (name: string) => boolean): string | undefined {
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    const path = join(root, entry.name);
+    if (entry.isDirectory()) {
+      const found = findFile(path, predicate);
+      if (found !== undefined) return found;
+    } else if (predicate(entry.name)) {
+      return path;
+    }
+  }
+  return undefined;
+}

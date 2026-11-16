@@ -161,11 +161,28 @@ account is `ae-a8n setup`'s job, not this package's.
 
 **Snapshots** compare the SHA-256 of the rendered PNG bytes by default:
 exact, no tolerance. `--update-snapshots` writes baselines to
-`<results-dir>/__snapshots__/<test id>--<name>.sha256` plus the baseline PNG
-as `<test id>--<name>.png`. They live inside the results directory, so keep
-that directory (or copy the baselines back into it) between runs; a missing
-baseline fails and names the render it would have recorded. Test ids are
-derived from the spec's path, so moving a spec renames its baselines.
+`<baseline-dir>/<environment>/<test id>--<name>.sha256` plus the baseline PNG
+as `<test id>--<name>.png`. `--baseline-dir` defaults to `./__snapshots__` at
+the project root — a directory meant to be **committed**, unlike the results
+directory — so a clean checkout or a CI workspace finds the same baselines.
+A normal run never writes there; only `--update-snapshots` does, and only for
+the baselines the run actually compares.
+
+Baselines are grouped per environment so they cannot collide: the key is the
+transport kind plus, for a real After Effects, the OS/arch and the host's own
+version and build (`script-invocation-darwin-arm64-ae-…`). The in-process fake
+host renders identically everywhere, so its namespace is just
+`fake-in-process` — a baseline recorded against the fake is never compared
+against a real render, and vice versa. Real-host baselines are only portable
+to the same OS/arch/AE version; treat them as per-environment evidence, not a
+cross-machine contract.
+
+Baselines recorded before 0.2.0-beta lived at
+`<results-dir>/__snapshots__/`. They are still read as a fallback, but
+nothing is written there any more; re-run once with `--update-snapshots` (or
+move the files into the matching `<baseline-dir>/<environment>/`) to migrate.
+Test ids are derived from the spec's path, so moving a spec renames its
+baselines.
 
 When byte-exact comparison is too strict, pass pixel tolerances as the second
 argument. The PNGs are decoded to RGBA and compared per channel:
@@ -203,7 +220,8 @@ the intended outcome.
 ```text
 ae-test <files...> [options]
 
-  --results-dir <dir>     artifacts, traces, snapshots, report.json (default .ae-test-results)
+  --results-dir <dir>     artifacts, traces, report.json (default .ae-test-results)
+  --baseline-dir <dir>    snapshot baselines to commit (default ./__snapshots__)
   --projects-dir <dir>    where .aep fixtures live (default fixtures)
   --timeout <ms>          per-test budget (default 60000)
   --grep <substring>      only tests whose title contains this
@@ -225,8 +243,9 @@ evidence), **2** the run never happened (no files, a bad flag, a crash before
 the first test). The fake host is never used unless `--fake-host` is given;
 it comes from `@ido-bata/ae-a8n/testing`, which ae-a8n marks unstable.
 
-Programmatic use: `run({ files, resultsDir, projectsDir, timeoutMs, grep,
-capabilityFilter, updateSnapshots, transport, conformance })` resolves to a
+Programmatic use: `run({ files, resultsDir, baselineDir, projectsDir,
+timeoutMs, grep, capabilityFilter, updateSnapshots, transport, conformance })`
+resolves to a
 `RunSummary`; `formatRun` and `exitCodeFor` turn it into what the CLI prints
 and returns. `capabilityFilter` keeps only tests that declare at least one of
 the listed capability IDs.
@@ -243,11 +262,21 @@ their own summary.
                                     and the session it ran against (uid, audit session id, host
                                     version, declared extension methods, fixture SHA-256s)
   conformance.json                  per-test capability evidence, only with --conformance
-  __snapshots__/                    baselines (sha256 digest + PNG)
   <test id>/
     trace.jsonl                     ae-a8n's record of every operation (op, status, durationMs, args, result/error)
     artifacts/[subdirectory/]*.png  renders
     a8n-session.json, inbox/, outbox/, staging/   the session's request/response envelopes
+```
+
+Snapshot baselines are not here — they live in `--baseline-dir`
+(`./__snapshots__/<environment>/` by default), a tree meant to be committed:
+
+```text
+__snapshots__/
+  fake-in-process/                  in-process fake host baselines
+  script-invocation-darwin-arm64-ae-<version>-<build>/   real-host baselines
+    <test id>--<name>.sha256        rendered bytes' digest
+    <test id>--<name>.png           the baseline image for pixel comparison
 ```
 
 A failure in the console names the last After Effects operations before it,
@@ -261,7 +290,7 @@ as an artifact.
 npm ci
 npm run build          # specs and tests import ../dist
 npm run check          # typecheck, lint, tests
-npm run ae-test -- specs/plugin-render.spec.ts --fake-host --update-snapshots
+npm run ae-test -- specs/plugin-render.spec.ts --fake-host   # baselines are committed under __snapshots__/
 node scripts/check-packed-package.js
 ```
 

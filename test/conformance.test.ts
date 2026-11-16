@@ -543,6 +543,7 @@ describe("runner integration", () => {
       projectsDir: PROJECTS_DIR,
       transport: new FakeAfterEffectsTransport(),
       updateSnapshots: true,
+      baselineDir: join(dir, "baselines"),
       conformance: {
         host: "fake",
         catalogPath,
@@ -594,6 +595,7 @@ describe("runner integration", () => {
       projectsDir: PROJECTS_DIR,
       transport: new FakeAfterEffectsTransport(),
       updateSnapshots: true,
+      baselineDir: join(dir, "baselines"),
       conformance: {
         host: "fake",
         catalogPath,
@@ -618,6 +620,7 @@ describe("runner integration", () => {
       projectsDir: PROJECTS_DIR,
       transport: new FakeAfterEffectsTransport(),
       updateSnapshots: true,
+      baselineDir: join(dir, "baselines"),
       conformance: { host: "real", runId: "declared-real" },
     });
 
@@ -699,6 +702,7 @@ describe("runner integration", () => {
       projectsDir: PROJECTS_DIR,
       transport: new FakeAfterEffectsTransport(),
       updateSnapshots: true,
+      baselineDir: join(dir, "baselines"),
       capabilityFilter: ["ae.operation.render.frame"],
     });
 

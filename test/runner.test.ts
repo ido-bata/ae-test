@@ -357,7 +357,9 @@ test("attaches", async ({ fixture }) => {
     const file = writeSpec("nested.spec.ts", `test("ok", async () => {});`);
     await run(options(file, { resultsDir: nested }));
     expect(existsSync(join(nested, "report.json"))).toBe(true);
-    expect(existsSync(join(nested, "__snapshots__"))).toBe(true);
+    // Snapshots no longer live in the results directory; a run that never
+    // updates baselines must not create a baseline tree anywhere.
+    expect(existsSync(join(nested, "__snapshots__"))).toBe(false);
   });
 });
 
