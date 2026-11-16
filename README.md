@@ -222,6 +222,14 @@ baseline written before image baselines existed needs one
 `expectFrame(after).toMatchFrame(before, options)` applies the same pixel
 comparison directly between two renders, without a stored baseline.
 
+When a pixel comparison fails, the runner leaves the evidence next to the
+render under `<test id>/diffs/`: copies of the expected and actual images, a
+`*.diff.png` with every diverging pixel marked, and a `*.diff.json` with the
+counts, ratio, options and first difference. They are listed in `report.json`
+as `diff` artifacts, and the failure message points at the JSON file. A
+comparison that cannot run pixel-wise (a size mismatch, an undecodable file)
+still leaves the image copies and the JSON record saying why.
+
 ## Fixtures
 
 Project files live in `fixtures/` (or `--projects-dir`). A real run needs a
@@ -303,6 +311,7 @@ type, for tools that resolve a project the way the CLI does.
   <test id>/
     trace.jsonl                     ae-a8n's record of every operation (op, status, durationMs, args, result/error)
     artifacts/[subdirectory/]*.png  renders
+    diffs/                          failed image comparisons: image copies, diff PNG, JSON diagnostic
     a8n-session.json, inbox/, outbox/, staging/   the session's request/response envelopes
 ```
 
@@ -319,7 +328,7 @@ __snapshots__/
 
 A failure in the console names the last After Effects operations before it,
 from the trace. `report.json` lists each artifact with its path, size and
-kind (`render`, `trace`, `attachment`). In CI, upload the results directory
+kind (`render`, `trace`, `attachment`, `diff`). In CI, upload the results directory
 as an artifact.
 
 ## Developing
