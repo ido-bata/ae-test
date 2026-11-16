@@ -59,6 +59,7 @@ function result(
       ae: { version: "26.5", build: "89" },
       extensions: [],
       fixtures: [],
+      transport: "fake-in-process",
     },
     cleanup: { status: "ok", quit: true },
     ...overrides,
@@ -68,6 +69,17 @@ function result(
     delete mutable[key];
   }
   return merged;
+}
+
+function realSession(): NonNullable<TestResult["session"]> {
+  return {
+    uid: 501,
+    asid: 1,
+    ae: { version: "26.5", build: "89" },
+    extensions: [],
+    fixtures: [],
+    transport: "script-invocation",
+  };
 }
 
 function summary(results: readonly TestResult[]): RunSummary {
@@ -99,10 +111,83 @@ describe("conformance classification", () => {
     expect(fake?.verification).toBe("automated-fake");
     expect(fake?.catalogBinding?.kind).toBe("automated-test");
 
-    const real = reportFor([result()], { host: "real" }).records[0];
+    const real = reportFor([result({ session: realSession() })], { host: "real" })
+      .records[0];
     expect(real?.classification).toBe("real-host-verified");
     expect(real?.verification).toBe("verified-real-host");
     expect(real?.catalogBinding?.kind).toBe("real-host");
+  });
+
+  it("promotes on transport provenance, not the declared host", () => {
+    // The hole this guards: a caller injects the fake transport through the
+    // public API but declares host "real". The declaration is a claim; the
+    // transport kind is the evidence, and it says fake.
+    const declaredReal = reportFor([result()], { host: "real" });
+    expect(declaredReal.records[0]?.classification).toBe("fake-only");
+    expect(declaredReal.records[0]?.verification).toBe("automated-fake");
+    expect(declaredReal.records[0]?.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "host-provenance-mismatch" }),
+      ]),
+    );
+    expect(declaredReal.ok).toBe(false);
+
+    // The mirror image: a real transport under a "fake" declaration still
+    // cannot hide that the evidence is real-host.
+    const declaredFake = reportFor([result({ session: realSession() })], {
+      host: "fake",
+    });
+    expect(declaredFake.records[0]?.classification).toBe("real-host-verified");
+    expect(declaredFake.records[0]?.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "host-provenance-mismatch" }),
+      ]),
+    );
+    expect(declaredFake.ok).toBe(false);
+  });
+
+  it("never promotes a session whose transport provenance is unrecognized", () => {
+    const report = reportFor([
+      result({
+        session: { ...realSession(), transport: "custom-remote" },
+      }),
+    ]);
+    const record = report.records[0];
+
+    expect(record?.classification).toBe("unknown");
+    expect(record?.result).toBe("UNKNOWN");
+    expect(record?.catalogBinding).toBeNull();
+    expect(record?.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "host-provenance-unknown" }),
+      ]),
+    );
+    // The provenance diagnostic itself stays a warning under a fake
+    // declaration — the record simply cannot claim either side. The report
+    // is still not ok, because a test that declared "pass" produced an
+    // UNKNOWN record (conformance-expectation-mismatch).
+    expect(
+      record?.diagnostics.find((d) => d.code === "host-provenance-unknown")?.severity,
+    ).toBe("warning");
+    expect(report.ok).toBe(false);
+
+    // A real declaration with unproven provenance is an error on both
+    // counts: the run cannot stand behind its claim, and the pass produced
+    // an UNKNOWN record.
+    const declaredReal = reportFor(
+      [result({ session: { ...realSession(), transport: null } })],
+      { host: "real" },
+    );
+    expect(declaredReal.records[0]?.classification).toBe("unknown");
+    expect(declaredReal.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "host-provenance-unknown",
+          severity: "error",
+        }),
+      ]),
+    );
+    expect(declaredReal.ok).toBe(false);
   });
 
   it("keeps refused, unknown, blocked and not-run distinct", () => {
@@ -335,7 +420,14 @@ describe("environment compatibility", () => {
       [
         result({
           capabilities: ["ae.operation.render.frame"],
-          session: { uid: 501, asid: 1, ae: { version: "26.0.0" }, extensions: [], fixtures: [] },
+          session: {
+            uid: 501,
+            asid: 1,
+            ae: { version: "26.0.0" },
+            extensions: [],
+            fixtures: [],
+            transport: "fake-in-process",
+          },
         }),
       ],
       { catalogPath },
@@ -384,7 +476,14 @@ describe("evidence aggregation", () => {
       result(),
       result({
         id: "spec#2",
-        session: { uid: 501, asid: 1, ae: { version: "27.1", build: "3" }, extensions: [], fixtures: [] },
+        session: {
+          uid: 501,
+          asid: 1,
+          ae: { version: "27.1", build: "3" },
+          extensions: [],
+          fixtures: [],
+          transport: "fake-in-process",
+        },
       }),
       result({ id: "spec#3", status: "skipped", durationMs: 0 }, ["session", "cleanup"]),
     ]);
@@ -503,6 +602,37 @@ describe("runner integration", () => {
     });
 
     const report = JSON.parse(readFileSync(summary.conformancePath ?? "", "utf-8")) as ConformanceReport;
+    expect(report.ok).toBe(false);
+    expect(summary.conformanceOk).toBe(false);
+    expect(exitCodeFor(summary)).toBe(1);
+  });
+
+  it("cannot promote a fake transport declared as a real host", async () => {
+    // The public API lets a caller inject any transport and declare any
+    // host. Provenance comes from the session's own handshake, not the
+    // declaration: FakeAfterEffectsTransport reports "fake-in-process", so
+    // every record stays fake-only and the mismatch fails the report.
+    const summary = await run({
+      files: [SPEC],
+      resultsDir: join(dir, "results"),
+      projectsDir: PROJECTS_DIR,
+      transport: new FakeAfterEffectsTransport(),
+      updateSnapshots: true,
+      conformance: { host: "real", runId: "declared-real" },
+    });
+
+    const report = JSON.parse(readFileSync(summary.conformancePath ?? "", "utf-8")) as ConformanceReport;
+    expect(report.host).toBe("real");
+    expect(report.records.length).toBeGreaterThan(0);
+    expect(report.records.every((record) => record.classification === "fake-only")).toBe(true);
+    expect(
+      report.records.every((record) =>
+        record.environment.transportKind === "fake-in-process",
+      ),
+    ).toBe(true);
+    expect(
+      report.diagnostics.filter((d) => d.code === "host-provenance-mismatch").length,
+    ).toBe(report.records.length);
     expect(report.ok).toBe(false);
     expect(summary.conformanceOk).toBe(false);
     expect(exitCodeFor(summary)).toBe(1);

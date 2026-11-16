@@ -39,6 +39,7 @@ export {
   buildConformanceReport,
   environmentBlockReason,
   evaluateCompatibility,
+  hostProvenance,
   loadCapabilityCatalog,
   writeConformanceReport,
   ConformanceError,
@@ -62,6 +63,7 @@ export type {
   ConformanceResult,
   ConformanceRunOptions,
   ConformanceVerification,
+  HostProvenance,
 } from "./conformance.js";
 
 export { HostNotOwnedError, TestFixture } from "./fixture.js";

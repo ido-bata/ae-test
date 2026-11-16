@@ -196,7 +196,25 @@ export class TestFixture {
       ae,
       extensions: declaredExtensions(session),
       fixtures: [...this.#fixtures],
+      transport: this.#transportKind(),
     };
+  }
+
+  /**
+   * The kind of transport the session ran on. No injected transport means
+   * ae-a8n's built-in script transport — the real After Effects process —
+   * so the implied kind is "script-invocation". An injected transport
+   * reports its own `kind`; one that cannot say records null, which is
+   * unproven, never real.
+   */
+  #transportKind(): string | null {
+    const injected = this.#options.transport;
+    if (injected === undefined) {
+      return "script-invocation";
+    }
+    return typeof injected.kind === "string" && injected.kind.length > 0
+      ? injected.kind
+      : null;
   }
 
   /**
