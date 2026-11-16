@@ -16,6 +16,12 @@
   project root. `node_modules` and dot-directories are skipped, results are
   sorted and deduplicated, and an empty selection exits 2.
 - `--real-host` overrides a config `"host": "fake"` for a single run.
+- `HostNotOwnedError` now says which refusal it is: "attached" reports the
+  host was left untouched, while "unknown" explains the After Effects may be
+  a leftover this run started. The refusal-time `close()` result travels into
+  `report.json` as `failure.ownership.quit` / `quitReason` / `closeError`, so
+  a reader can tell a clean refusal from a possibly-running leftover without
+  parsing text.
 - Public contract fixed ahead of 1.0 (`docs/api.md`): the export surface is
   pinned by `test/api-surface.test.ts` and a packed-consumer type check;
   `report.json` gains a `schema: "ae-test.report/v1"` field; semver rules,
