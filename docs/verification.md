@@ -10,9 +10,10 @@ nothing about the other.
 
 - `npm ci` with `@ido-bata/ae-a8n@0.1.0-alpha.2` from registry.npmjs.org,
   integrity checked against `package-lock.json`, recorded in the job summary;
-- build, typecheck, lint, 146 tests (runner, fixtures, teardown, snapshots and
+- build, typecheck, lint, 149 tests (runner, fixtures, teardown, snapshots and
   pixel-tolerant image comparison, conformance evidence classification,
-  non-ok exit status, capability-ID selection, environment compatibility and
+  transport-provenance host promotion guards, non-ok exit status,
+  capability-ID selection, environment compatibility and
   evidence aggregation, the checked-in capability
   manifest, reports, the dependency pin, the version constant, the README
   examples type-checked against `dist`, and the static-host-extension cases —
