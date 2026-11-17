@@ -96,7 +96,7 @@ export class Expectation<T> {
   }
 
   toBeDefined(): void {
-    if ((this.#actual === undefined) === this.#negated) {
+    if ((this.#actual !== undefined) === this.#negated) {
       this.#fail(`a defined value, received ${show(this.#actual)}`);
     }
   }
