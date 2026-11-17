@@ -103,7 +103,7 @@ skip("not yet", async () => {});
 | `testInfo` | `{ id, title, file, outputDir }` |
 | `expect(value)` | `toBe`, `toEqual`, `toMatchObject`, `toBeDefined`, `toBeGreaterThan`, `toBeLessThan`, `toBeCloseTo`, `.not` |
 | `expect(promise).rejects()` | Resolves to an expectation on the rejection: `toMatchObject({ name: "EntityNotFoundError", kind: "composition" })` |
-| `expectFrame(frame)` | `toHaveSize(w, h)`, `toPath(pattern)`, `await toMatchFrame(other, options?)`, `await toMatchSnapshot(name, options?)` |
+| `expectFrame(frame)` | `toHaveSize(w, h)`, `toPath(pattern)`, `await toMatchFrame(other, options?)`, `await toDifferFromFrame(other, options?)`, `await toMatchSnapshot(name, options?)` |
 
 **Conformance.** A test can name the ae-devtools capability IDs it is
 evidence for, and the strongest claim it may make:
@@ -233,6 +233,10 @@ baseline written before image baselines existed needs one
 
 `expectFrame(after).toMatchFrame(before, options)` applies the same pixel
 comparison directly between two renders, without a stored baseline.
+`expectFrame(after).toDifferFromFrame(before, options)` is the inverted
+assertion: it passes only when the pixels differ beyond the tolerances, so
+a change that produces identical output cannot pass by writing to a
+different path.
 
 When a pixel comparison fails, the runner leaves the evidence next to the
 render under `<test id>/diffs/`: copies of the expected and actual images, a
