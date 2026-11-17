@@ -45,7 +45,7 @@ Or configure the project once and let the CLI discover the suite:
 npx ae-test          # runs what the config selects, against the fake host
 ```
 
-> **Beta.** `0.2.0-beta.1` is the current candidate; the `next` dist-tag
+> **Beta.** `0.2.0-beta.2` is the current candidate; the `next` dist-tag
 > carries pre-releases. The API is stabilising but may still change between
 > betas — breaking changes land in beta releases and are listed in the
 > CHANGELOG. Only macOS has been run against a real After Effects (below),
