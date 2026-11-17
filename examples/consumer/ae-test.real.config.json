@@ -1,8 +1,0 @@
-{
-  "specs": ["real-host/**/*.spec.mjs"],
-  "host": "real",
-  "resultsDir": ".ae-test-results/real",
-  "baselineDir": "__snapshots__/real",
-  "projectsDir": "fixtures",
-  "installDir": "/Applications/Adobe After Effects 2026"
-}
