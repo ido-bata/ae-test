@@ -3,12 +3,12 @@
 From npm, as one exact published version:
 
 ```json
-"@ido-bata/ae-a8n": "0.1.0-alpha.2"
+"@ido-bata/ae-a8n": "0.2.0"
 ```
 
-- **Exact, not a range.** It is a pre-release, and `^0.1.0-alpha.0` would
-  accept later alphas that may break the API. Bump on purpose, in its own
-  pull request.
+- **Exact, not a range.** It is an early-development `0.x` release, and a
+  range would accept later minors that may break the API. Bump on purpose,
+  in its own pull request.
 - **Pinned by integrity.** `package-lock.json` records the tarball URL on
   registry.npmjs.org and its sha512. CI installs with `npm ci`, which refuses
   a tarball that does not match, and writes the version, URL and integrity
@@ -44,7 +44,11 @@ ended.
 
 ## History
 
-- `0.1.0-alpha.2` (this pin) is the first published version with the static
+- `0.2.0` (this pin) is the `release-0-2-0` train: the static host extension
+  API plus the macOS LaunchServices launch path (ae-a8n #106, fixing the
+  dual-process launch of #105) and `readinessTimeoutMs` (#124). The previous
+  pin could not prove After Effects ownership on AE 26.5/27.0 — ae-test #52.
+- `0.1.0-alpha.2` was the first published version with the static
   host extension API (`hostScript`, `extensionMethods()`, `call()`) and the
   macOS/Windows isolated CLI. `test/extension.test.ts` ran for the first time
   against a published version with this pin; before it, the same cases were
