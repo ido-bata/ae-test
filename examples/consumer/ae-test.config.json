@@ -1,0 +1,7 @@
+{
+  "specs": ["specs/**/*.spec.mjs"],
+  "host": "fake",
+  "resultsDir": ".ae-test-results",
+  "baselineDir": "__snapshots__",
+  "projectsDir": "fixtures"
+}

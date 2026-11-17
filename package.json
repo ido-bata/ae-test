@@ -33,6 +33,7 @@
   },
   "files": [
     "dist",
+    "examples/consumer",
     "CHANGELOG.md"
   ],
   "scripts": {

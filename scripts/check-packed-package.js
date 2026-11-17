@@ -385,9 +385,42 @@ test("two renders diverge", async ({ ae, fixture, expectFrame }) => {
   const none = cliIn(empty, []);
   if (none.status !== 2) fail(`no test files exited ${none.status}, expected 2`);
 
+  // The committed consumer example under examples/ must work verbatim: it is
+  // what a new user copies, so it is exercised here against the tarball —
+  // install, config discovery, snapshot record, then a clean rerun.
+  const exampleSrc = join(ROOT, "examples", "consumer");
+  const example = join(workdir, "example-consumer");
+  mkdirSync(example, { recursive: true });
+  for (const entry of readdirSync(exampleSrc, { withFileTypes: true })) {
+    const src = join(exampleSrc, entry.name);
+    if (entry.isDirectory()) {
+      execFileSync("cp", ["-R", src, join(example, entry.name)]);
+    } else {
+      copyFileSync(src, join(example, entry.name));
+    }
+  }
+  execFileSync("npm", ["install", "--no-audit", "--no-fund", tarball], { cwd: example, stdio: "inherit" });
+  const exampleBin = join(example, "node_modules", ".bin", "ae-test");
+  const exampleRecord = spawnSync(exampleBin, ["--update-snapshots"], { cwd: example, encoding: "utf-8" });
+  if (exampleRecord.status !== 0) {
+    fail(`consumer example baseline run exited ${exampleRecord.status}\n${exampleRecord.stdout}\n${exampleRecord.stderr}`);
+  }
+  const exampleRun = spawnSync(exampleBin, [], { cwd: example, encoding: "utf-8" });
+  if (exampleRun.status !== 0) {
+    fail(`consumer example run exited ${exampleRun.status}\n${exampleRun.stdout}\n${exampleRun.stderr}`);
+  }
+  const exampleReport = JSON.parse(
+    readFileSync(join(example, ".ae-test-results", "report.json"), "utf-8"),
+  );
+  if (exampleReport.results.length !== 1 ||
+      exampleReport.results[0].status !== "passed") {
+    fail(`consumer example reported ${JSON.stringify(exampleReport.results.map((/** @type {{status:string}} */ r) => r.status))}`);
+  }
+
   console.log(
     `consumer install ok: ae-a8n ${a8n.version} from the registry; ` +
-      `passing suite 0 (${readdirSync(join(project, "results")).length} entries in results/), failing suite 1, no files 2`,
+      `passing suite 0 (${readdirSync(join(project, "results")).length} entries in results/), failing suite 1, no files 2; ` +
+      `examples/consumer green`,
   );
 } finally {
   rmSync(workdir, { recursive: true, force: true });
