@@ -6,6 +6,6 @@
   "scripts": {
     "test": "ae-test",
     "test:fake": "ae-test --fake-host",
-    "test:real": "ae-test --real-host"
+    "test:real": "ae-test --config ae-test.real.config.json"
   }
 }

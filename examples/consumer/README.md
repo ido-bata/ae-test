@@ -31,7 +31,9 @@ reads project bytes. A real run needs a real `.aep` saved by After Effects.
 lane: one smoke test that opens a real project, applies a built-in effect,
 writes and reads back a parameter, renders two frames, and compares a
 snapshot. It is deliberately outside `specs/` so the fake suite never picks
-it up — a fake-only example must not stand in for real-AE acceptance.
+it up — a fake-only example must not stand in for real-AE acceptance. The
+config file is not named `ae-test.config.json`, so it is only used when
+passed explicitly via `--config` (which `npm run test:real` does).
 
 ### One-time fixture: a disposable `.aep`
 
