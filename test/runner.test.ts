@@ -216,6 +216,7 @@ test("fails", async () => { throw new Error("nope"); });
       passed: 1,
       failed: 1,
       "timed-out": 0,
+      interrupted: 0,
       skipped: 0,
       blocked: 0,
     });
@@ -364,7 +365,7 @@ test("attaches", async ({ fixture }) => {
 });
 
 describe("registry", () => {
-  it("rejects a declaration with no function", async () => {
+  it("reports a declaration with no function as that file's load failure", async () => {
     const file = join(specsDir, "bad.spec.ts");
     mkdirSync(specsDir, { recursive: true });
     writeFileSync(
@@ -372,6 +373,13 @@ describe("registry", () => {
       `import { test } from "${resolve(import.meta.dirname, "..", "dist", "index.js")}";\ntest("bad", null);\n`,
       "utf-8",
     );
-    await expect(run(options(file))).rejects.toThrow(/needs a function/);
+    const summary = await run(options(file));
+    expect(summary.results).toHaveLength(1);
+    expect(summary.results[0]).toMatchObject({
+      status: "failed",
+      failure: { name: "TypeError", phase: "load" },
+    });
+    expect(summary.results[0]?.failure?.message).toMatch(/needs a function/);
+    expect(exitCodeFor(summary)).toBe(1);
   });
 });

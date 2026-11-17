@@ -612,6 +612,7 @@ function classify(result: TestResult): {
     case "blocked":
       return { result: "BLOCKED", classification: "blocked" };
     case "timed-out":
+    case "interrupted":
       return { result: "UNKNOWN", classification: "unknown" };
     case "failed":
       if (isRefusal(result)) {

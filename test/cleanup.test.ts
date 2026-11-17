@@ -98,7 +98,7 @@ describe("a teardown that fails", () => {
     // Not run at all — not run and failed.
     expect(bodies()).toEqual(["first"]);
     expect(exitCodeFor(summary)).toBe(1);
-    expect(formatRun(summary)).toMatch(/0 passed, 1 failed, 0 timed out, 0 skipped, 2 blocked/);
+    expect(formatRun(summary)).toMatch(/0 passed, 1 failed, 0 timed out, 0 interrupted, 0 skipped, 2 blocked/);
   });
 
   it("keeps the body's failure as the reason, and records the teardown failure too", async () => {

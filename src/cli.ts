@@ -43,7 +43,8 @@ Options:
                           committed (default: ./__snapshots__, grouped per
                           environment). Read-only unless --update-snapshots
   --projects-dir <dir>    Where .aep fixtures live (default: fixtures)
-  --timeout <ms>          Per-test budget (default: 60000)
+  --timeout <ms>          Per-test body budget (default: 60000); launch
+                          and teardown have their own bounds
   --grep <substring>      Only run tests whose title contains this
   --capability <id>       Only run tests declaring this capability ID
                           (repeatable)
@@ -389,9 +390,34 @@ async function main(): Promise<number> {
     },
   };
 
-  const summary = await run(runOptions);
+  // SIGINT/SIGTERM become an AbortSignal the runner honours: the in-flight
+  // test is interrupted, its session still gets a bounded teardown, the
+  // remaining tests are reported blocked, and report.json is written before
+  // exit. A second signal exits immediately — the first one already asked
+  // for the safe path.
+  const interrupt = new AbortController();
+  let interruptCount = 0;
+  const onInterrupt = (): void => {
+    interruptCount += 1;
+    if (interruptCount > 1) {
+      process.exit(130);
+    }
+    interrupt.abort();
+  };
+  process.on("SIGINT", onInterrupt);
+  process.on("SIGTERM", onInterrupt);
+
+  let summary;
+  try {
+    summary = await run({ ...runOptions, signal: interrupt.signal });
+  } finally {
+    process.off("SIGINT", onInterrupt);
+    process.off("SIGTERM", onInterrupt);
+  }
   process.stdout.write(`${formatRun(summary)}\n`);
-  return exitCodeFor(summary);
+  // 130 is the conventional "killed by SIGINT" status; the report already
+  // records which test was interrupted and which were blocked.
+  return interrupt.signal.aborted ? 130 : exitCodeFor(summary);
 }
 
 async function createFakeTransport(): Promise<HostTransport> {
