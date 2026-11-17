@@ -55,8 +55,21 @@ not left running, and the fixture's bytes unchanged.
 | --- | --- | --- | --- |
 | 2026-10-15 05:15–05:48 | 1261f77 (pre-release) | bb4c197, from a checkout | 20 of 20 runs passed (10 with a third-party CEP extension disabled, 10 enabled) |
 | 2026-10-15 12:30 | 5d30ef6 (this release) | **0.1.0-alpha.0 from npm** | pass: B 4/4 in 21 s, snapshot matched the earlier baseline (`44c9d3df…`), every session quit; A red as intended |
-| 2026-11-11 | 0.1.0-alpha.1 branch | `0.1.0-alpha.2` from npm | **not run.** The macOS host on this machine is logged in as the console user, and the isolated lane needs a second account that has been logged in once (`offstage doctor`: "no computeruse account"; `ae-a8n doctor`: `A8N-SESSION-003`, uid 501 is the console uid). ae-test does not fall back to the console desktop, so there is no honest real-host row for this branch yet |
-| — | `0.2.0-beta.1` candidate `db8147c` / `release/0.2.0-beta.2` train | `0.1.0-alpha.2` pinned | **not run.** Same console-session constraint as above; no real-host row exists for the beta train yet. See #19 for the tracked real-host task |
+| 2026-11-11 | 0.1.0-alpha.1 branch | `0.1.0-alpha.2` from npm | **not run.** No real-host row was produced for this branch. The *isolated* lane is blocked on machine setup (`offstage doctor`: "no computeruse account"; `ae-a8n doctor`: `A8N-SESSION-003`, uid 501 is the console uid); the *local* lane was not attempted — it needs one-time human consent in After Effects (see below). See #19 for the isolated-lane task and #52 for the local lane |
+| — | `0.2.0-beta.1` candidate `db8147c` / `release/0.2.0-beta.2` train | `0.1.0-alpha.2` pinned | **not run.** Same two-lane state as above: isolated lane blocked on #19 T058's machine setup; local lane pending the human consent steps in #52 (first launch dialogs, scripting permission, script-trust approval — the prefs were reset on 2026-11-17). `A8N-SESSION-003` does not block the local lane |
+
+### Local console-session lane (pending human consent)
+
+A real-host run does not have to use the isolated lane: the 2026-10-15 rows
+above were produced by running the `ae-test` CLI directly on the console
+desktop, letting ae-test launch and own its own After Effects
+(`installDir` selects which installation, e.g. AE 2026 over AE 2027). What
+that lane needs on this machine today is human work, not code: first-launch
+dialogs, the scripting file/network permission, and the script-trust
+approval whose granularity is still open upstream (ae-a8n #125). The exact
+minimal steps and acceptance are tracked in #52; until they happen there is
+no honest real-host row for the beta train. `A8N-SESSION-003` is a refusal
+of the *isolated* lane only — it says nothing about the local one.
 
 ### Isolated session (not yet run at all)
 
