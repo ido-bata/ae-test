@@ -70,22 +70,22 @@ test("reads a parameter back after setting it", async ({ ae, fixture, expect }) 
   ],
 });
 
-test("the parameter reaches the pixels", async ({ ae, fixture, expect }) => {
+test("the parameter reaches the pixels", async ({ ae, fixture, expect, expectFrame }) => {
   const project = await ae.openProject(fixture.project("fixture.aep"));
   const comp = await project.comp("Main");
   const layer = await comp.layer("Solid 1");
   const effect = await layer.effects.apply(EFFECT);
 
-  // Two renders of the same frame must differ once the effect is configured.
-  // This is the assertion that would actually catch a plugin silently ignoring
-  // its parameters.
+  // Two renders of the same frame must differ in pixels once the effect is
+  // configured. This is the assertion that would actually catch a plugin
+  // silently ignoring its parameters — a different file path proves nothing.
   const before = await comp.renderFrame(0, { subdirectory: "unconfigured" });
   await effect.parameter("Amount").set(75);
   const after = await comp.renderFrame(0, { subdirectory: "configured" });
 
   expect(before.width).toBe(after.width);
   expect(before.height).toBe(after.height);
-  expect(before.path).not.toBe(after.path);
+  await expectFrame(after).toDifferFromFrame(before);
 }, {
   capabilities: [
     "ae.operation.project.open",

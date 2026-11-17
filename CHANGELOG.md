@@ -29,6 +29,11 @@ real-host lane documented since beta.1.
 - The CLI exits 2 with a clear message when TypeScript specs are selected
   on a Node too old to strip types (<22.18), instead of failing deep in
   module resolution.
+- `expectFrame(frame).toDifferFromFrame(other, options?)` (#60): the
+  inverted frame comparison — it passes only when the two renders' pixels
+  differ beyond the same tolerances `toMatchFrame` honours, so a no-op
+  change cannot pass by producing a different file path. A failed
+  "differ" leaves the same diff evidence artifacts as a failed "match".
 - Test context revocation (#50, call-time check #55): once a test reaches its terminal state —
   body settled, timed out, failed, or interrupted — the handles it was
   given refuse further use with `TestContextRevokedError`. That covers
@@ -44,6 +49,16 @@ real-host lane documented since beta.1.
   guarantee; the boundary is
   documented in `docs/api.md`. `TestContextRevokedError` is a new public
   export (minor).
+
+### Fixed
+
+- The consumer real-host smoke spec no longer passes as a no-op (#60): it
+  asserted only that two render paths differed, picked "the first OneD"
+  parameter, and ran against a fixture where Gaussian Blur changes no
+  pixels. It now builds a disposable comp with a text layer at run time
+  (no `.aep` fixture required), selects the Blurriness parameter by match
+  name, and asserts the before/after renders differ in pixels via
+  `toDifferFromFrame`.
 
 ### Changed
 

@@ -56,7 +56,7 @@ not left running, and the fixture's bytes unchanged.
 | 2026-10-15 05:15–05:48 | 1261f77 (pre-release) | bb4c197, from a checkout | 20 of 20 runs passed (10 with a third-party CEP extension disabled, 10 enabled) |
 | 2026-10-15 12:30 | 5d30ef6 (this release) | **0.1.0-alpha.0 from npm** | pass: B 4/4 in 21 s, snapshot matched the earlier baseline (`44c9d3df…`), every session quit; A red as intended |
 | 2026-11-11 | 0.1.0-alpha.1 branch | `0.1.0-alpha.2` from npm | **not run.** No real-host row was produced for this branch. The *isolated* lane is blocked on machine setup (`offstage doctor`: "no computeruse account"; `ae-a8n doctor`: `A8N-SESSION-003`, uid 501 is the console uid); the *local* lane was not attempted — it needs one-time human consent in After Effects (see below). See #19 for the isolated-lane task and #52 for the local lane |
-| — | `0.2.0-beta.1` candidate `db8147c` / `release/0.2.0-beta.2` train | `0.1.0-alpha.2` pinned | **not run.** Same two-lane state as above: isolated lane blocked on #19 T058's machine setup; local lane pending the human consent steps in #52 (first launch dialogs, scripting permission, script-trust approval — the prefs were reset on 2026-11-17). `A8N-SESSION-003` does not block the local lane |
+| — | `release/0.2.0-beta.2` train（#60 の release-blocking 修正を含む head に再 freeze。固定 SHA は release PR に記録） | `0.1.0-alpha.2` pinned | **not run.** Same two-lane state as above: isolated lane blocked on #19 T058's machine setup; local lane pending the human consent steps in #52 (first launch dialogs, scripting permission, script-trust approval — the prefs were reset on 2026-11-17). `A8N-SESSION-003` does not block the local lane |
 
 ### Local console-session lane (pending human consent)
 

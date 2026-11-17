@@ -3,7 +3,8 @@ import { test } from "@ido-bata/ae-test";
 // This spec runs against ae-a8n's in-process fake host, which knows the
 // "ADBE Fake Gaussian Blur" effect and the "Main"/"Solid 1" fixture names.
 // Against a real After Effects it fails by design — see README.md for the
-// real-host variant, which uses a real .aep and a real effect match name.
+// real-host variant, which builds its own disposable comp and a real
+// effect match name.
 test("Gaussian Blur changes the pixels", async ({ ae, fixture, expectFrame }) => {
   const project = await ae.openProject(fixture.project("fixture.aep"));
   const comp = await project.comp("Main");
