@@ -27,20 +27,68 @@ reads project bytes. A real run needs a real `.aep` saved by After Effects.
 
 ## Real After Effects
 
-Set `"host": "real"` (or run `ae-test --real-host`) and provide:
+`ae-test.real.config.json` and `real-host/smoke.spec.mjs` are the real-host
+lane: one smoke test that opens a real project, applies a built-in effect,
+writes and reads back a parameter, renders two frames, and compares a
+snapshot. It is deliberately outside `specs/` so the fake suite never picks
+it up — a fake-only example must not stand in for real-AE acceptance.
 
-- a real `.aep` under `fixtures/` containing the composition/layer names
-  your spec uses;
-- After Effects installed, **not running** when the suite starts;
+### One-time fixture: a disposable `.aep`
+
+The fake never reads project bytes, so `fixtures/fixture.aep` is a
+placeholder. The real spec needs `fixtures/real-host.aep`, a real project
+the suite may dirty (the effect is applied in memory and discarded at
+teardown — the file on disk is never written, but treat it as disposable and
+keep a master copy elsewhere). Create it once, by hand, in After Effects:
+
+1. New project → new composition named **`Main`** (any size/frame rate; the
+   spec reads dimensions from `comp.info()`).
+2. Add a solid (or any full-frame footage) layer named **`Solid 1`**.
+3. File → Save As → `fixtures/real-host.aep`. Note its SHA-256
+   (`shasum -a 256 fixtures/real-host.aep`) — `report.json` records the same
+   digest under `session.fixtures`, so a changed fixture is visible in the
+   evidence.
+
+### Prerequisites
+
+- After Effects installed and **not running** when the suite starts —
+  ae-test refuses a host it did not launch.
+- Edit `installDir` in `ae-test.real.config.json` to the installation to use
+  (e.g. `/Applications/Adobe After Effects 2026` vs `… 2027`).
 - **Settings → Scripting & Expressions → Allow Scripts to Write Files and
-  Access Network** enabled;
-- on AE 26.5+, script-trust approval for the scripts ae-a8n stages — the
+  Access Network** enabled.
+- On AE 26.5+, script-trust approval for the scripts ae-a8n stages — the
   first run may show a modal that must be approved once per location.
 
-Then swap the fake-only effect id (`ADBE Fake Gaussian Blur`) for a real
-effect's match name — match names, not display names, because display
-names are localised. A cold launch can take minutes; the per-test budget
-covers the test body, not the launch.
+### Run
+
+```bash
+npm run test:real -- --update-snapshots   # record baselines once
+npm run test:real                          # compare
+```
+
+A cold launch can take minutes; the per-test budget covers the test body,
+not the launch.
+
+### Evidence and diagnosis
+
+Each run writes `.ae-test-results/real/`:
+
+- `report.json` — per-test status, `session` facts (`transport` is
+  `"script-invocation"` on the real lane, plus uid/asid, AE `version`/`build`,
+  fixture SHA-256s), `failure.phase`/`lastOperations`, and `cleanup`.
+- `<test id>/trace.jsonl` — every host operation, in order; the last lines
+  name where a failure stopped.
+- `<test id>/` renders — the PNGs the assertions compared.
+- `__snapshots__/real/<environment>/` — committed baselines (commit them);
+  `.ae-test-results/` stays uncommitted.
+
+When a real run fails, read in this order: `report.json` →
+`failure.ownership` (was the AE refused as not ours?), `failure.phase`
+(`launch` vs `body` vs `cleanup`), `lastOperations` and the tail of that
+test's `trace.jsonl`, then `cleanup` (did After Effects actually quit?). A
+`HostNotOwnedError` means an AE was already running — quit it and rerun; it
+is not a test failure.
 
 A fake-host green proves the harness works; only a real-host run is
 evidence about After Effects. See the repository's `docs/verification.md`

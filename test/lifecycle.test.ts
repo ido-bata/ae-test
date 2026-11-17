@@ -31,11 +31,13 @@ function readReport(): ReportSnapshot {
 let resultsDir: string;
 let specsDir: string;
 let projectDir: string;
+let extraDirs: string[] = [];
 
 beforeEach(() => {
   resultsDir = mkdtempSync(join(tmpdir(), "ae-test-lifecycle-"));
   specsDir = mkdtempSync(join(tmpdir(), "ae-test-specs-"));
   projectDir = mkdtempSync(join(tmpdir(), "ae-test-projects-"));
+  extraDirs = [];
   writeFileSync(join(projectDir, "fixture.aep"), "placeholder");
   for (const key of [
     "__gate",
@@ -53,7 +55,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  for (const dir of [resultsDir, specsDir, projectDir]) {
+  for (const dir of [resultsDir, specsDir, projectDir, ...extraDirs]) {
     rmSync(dir, { recursive: true, force: true });
   }
 });
@@ -406,6 +408,7 @@ test("the next test observes the refusal", async () => {
 
   it("refuses method references the body captured before the timeout", async () => {
     const baselineDir = mkdtempSync(join(tmpdir(), "ae-test-baselines-"));
+    extraDirs.push(baselineDir);
     const file = writeSpec(
       "held-methods.spec.ts",
       `
@@ -510,7 +513,6 @@ test("the observer checks the refusals and the evidence", async () => {
       // No baseline directory at all is also a pass.
     }
     expect(baselineFiles.filter((path) => path.includes("held-baseline"))).toHaveLength(0);
-    rmSync(baselineDir, { recursive: true, force: true });
   });
 
   it("revokes handles a passing body left behind in detached work", async () => {

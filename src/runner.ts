@@ -681,6 +681,11 @@ type GuardState = {
  * `const set = parameter.set` before the terminal state would otherwise
  * keep a live dispatch path past revocation — reading a property is not
  * the same event as calling it.
+ *
+ * Introspection traps (`getOwnPropertyDescriptor`, `getPrototypeOf`, …)
+ * are deliberately not guarded: they can surface raw members, but those
+ * members need the target's private fields as `this`, which only the
+ * proxy's traps can supply — a raw reference cannot dispatch.
  */
 function guardSession(
   session: AfterEffects,

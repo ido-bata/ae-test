@@ -27,7 +27,7 @@ Depends on `@ido-bata/ae-a8n` `0.1.0-alpha.2` exactly.
 - The CLI exits 2 with a clear message when TypeScript specs are selected
   on a Node too old to strip types (<22.18), instead of failing deep in
   module resolution.
-- Test context revocation (#50): once a test reaches its terminal state —
+- Test context revocation (#50, call-time check #55): once a test reaches its terminal state —
   body settled, timed out, failed, or interrupted — the handles it was
   given refuse further use with `TestContextRevokedError`. That covers
   `context.ae` and every object reachable from it (`Project`, `Comp`,
