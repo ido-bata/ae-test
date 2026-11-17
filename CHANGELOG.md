@@ -21,6 +21,12 @@ Depends on `@ido-bata/ae-a8n` `0.1.0-alpha.2` exactly.
 - `TestStatus` gains `"interrupted"`; `TestFailure.phase` gains `"load"`;
   `RunSummary` gains optional `partial`. All additive under
   `ae-test.report/v1`.
+- A copyable consumer project ships in the tarball at
+  `examples/consumer/` (config, a fake-host spec, and a real-host guide);
+  `scripts/check-packed-package.js` now installs and runs it verbatim.
+- The CLI exits 2 with a clear message when TypeScript specs are selected
+  on a Node too old to strip types (<22.18), instead of failing deep in
+  module resolution.
 
 ### Changed
 
