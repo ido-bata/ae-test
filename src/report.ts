@@ -13,6 +13,7 @@ const SYMBOL: Record<TestResult["status"], string> = {
   passed: "✓",
   failed: "✗",
   "timed-out": "⏱",
+  interrupted: "■",
   skipped: "-",
   blocked: "⊘",
 };
@@ -43,6 +44,11 @@ export function formatFailure(result: TestResult): string {
       `    host ownership: ${result.failure.ownership.kind} (${result.failure.ownership.evidence})`,
     );
   }
+  if (result.failure.bodyStillRunning === true) {
+    lines.push(
+      "    the test body was still running when teardown began; it was not re-run or re-sent",
+    );
+  }
   if (result.failure.lastOperations.length > 0) {
     lines.push("    last operations:");
     for (const op of result.failure.lastOperations) {
@@ -68,6 +74,7 @@ export function formatSummary(summary: RunSummary): string {
     `${counts.passed} passed`,
     `${counts.failed} failed`,
     `${counts["timed-out"]} timed out`,
+    `${counts.interrupted} interrupted`,
     `${counts.skipped} skipped`,
     `${counts.blocked} blocked`,
   ];

@@ -1,7 +1,7 @@
 {
   "name": "@ido-bata/ae-test",
-  "version": "0.1.0-alpha.1",
-  "description": "Playwright-like tests for After Effects plugins and scripts, on top of @ido-bata/ae-a8n. macOS-verified alpha.",
+  "version": "0.2.0-beta.2",
+  "description": "Playwright-like tests for After Effects plugins and scripts, on top of @ido-bata/ae-a8n.",
   "type": "module",
   "license": "MIT",
   "engines": {
@@ -33,6 +33,7 @@
   },
   "files": [
     "dist",
+    "examples/consumer",
     "CHANGELOG.md"
   ],
   "scripts": {
@@ -45,7 +46,7 @@
     "check:package": "node scripts/check-packed-package.js"
   },
   "dependencies": {
-    "@ido-bata/ae-a8n": "0.1.0-alpha.2",
+    "@ido-bata/ae-a8n": "0.2.0",
     "pngjs": "7.0.0"
   },
   "devDependencies": {

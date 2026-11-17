@@ -6,7 +6,8 @@
  * `pngjs` owns PNG decoding; this module owns the metric and the failure text.
  */
 
-import { readFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 import { PNG } from "pngjs";
 
@@ -40,9 +41,172 @@ export type ImageDifference = {
 };
 
 export class ImageComparisonError extends Error {
-  constructor(message: string) {
+  /** Dimensions of both images when the failure is a size mismatch. */
+  readonly expectedSize: { readonly width: number; readonly height: number } | undefined;
+  readonly actualSize: { readonly width: number; readonly height: number } | undefined;
+
+  constructor(
+    message: string,
+    sizes?: {
+      expected: { readonly width: number; readonly height: number };
+      actual: { readonly width: number; readonly height: number };
+    },
+  ) {
     super(message);
     this.name = "ImageComparisonError";
+    this.expectedSize = sizes?.expected;
+    this.actualSize = sizes?.actual;
+  }
+}
+
+/** What a failed image comparison left behind for a human to inspect. */
+export type ImageDiffArtifacts = {
+  /** Copy of the expected (baseline) image, inside the results directory. */
+  readonly expectedPath: string;
+  /** Copy of the actual render, inside the results directory. */
+  readonly actualPath: string;
+  /**
+   * Visualization PNG: the actual pixels with every pixel outside `threshold`
+   * marked. Absent when the images could not be compared pixel-wise (a size
+   * mismatch, an undecodable file) — `reportPath` still says why.
+   */
+  readonly diffPath: string | undefined;
+  /** Structured diagnostics: sizes, counts, ratio, options, first difference. */
+  readonly reportPath: string;
+};
+
+export type ImageDiffInput = {
+  /** Directory the artifacts are written into (created if needed). */
+  readonly dir: string;
+  /** File-safe base name, e.g. `<test id>--<snapshot name>`. */
+  readonly baseName: string;
+  readonly expectedPath: string;
+  readonly actualPath: string;
+  /** The comparison outcome, or the error that kept it from completing. */
+  readonly outcome: ImageDifference | Error;
+  readonly options?: ImageComparisonOptions;
+};
+
+/**
+ * Writes the failure evidence for an image comparison: copies of both images,
+ * a diff visualization when the images can be compared pixel-wise, and a JSON
+ * diagnostic record. Called only on failure — a passing comparison produces
+ * nothing.
+ */
+export function writeImageDiffArtifacts(input: ImageDiffInput): ImageDiffArtifacts {
+  mkdirSync(input.dir, { recursive: true });
+  const expectedPath = join(input.dir, `${input.baseName}.expected.png`);
+  const actualPath = join(input.dir, `${input.baseName}.actual.png`);
+  const diffPath = join(input.dir, `${input.baseName}.diff.png`);
+  const reportPath = join(input.dir, `${input.baseName}.diff.json`);
+
+  // The copies are evidence, not load-bearing: an unreadable source (the very
+  // failure this diagnostic exists for) must not replace the real assertion
+  // error, so a failed copy is recorded in the report instead of thrown.
+  const copyErrors: string[] = [];
+  for (const [source, target] of [
+    [input.expectedPath, expectedPath],
+    [input.actualPath, actualPath],
+  ] as const) {
+    try {
+      copyFileSync(source, target);
+    } catch (error) {
+      copyErrors.push(`${target}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  const difference = "passed" in input.outcome ? input.outcome : undefined;
+  const error =
+    difference === undefined && input.outcome instanceof Error
+      ? input.outcome.message
+      : undefined;
+
+  const written =
+    difference === undefined
+      ? undefined
+      : writeDiffPng(expectedPath, actualPath, diffPath, difference, input.options?.threshold ?? 0);
+
+  const report = {
+    schema: "ae-test.image-diff/v1",
+    expected: { path: expectedPath, source: input.expectedPath },
+    actual: { path: actualPath, source: input.actualPath },
+    diff: written === undefined ? null : { path: written },
+    options: {
+      threshold: input.options?.threshold ?? 0,
+      maxDiffPixels: input.options?.maxDiffPixels ?? null,
+      maxDiffPixelRatio: input.options?.maxDiffPixelRatio ?? null,
+    },
+    sizes:
+      input.outcome instanceof ImageComparisonError &&
+      (input.outcome.expectedSize !== undefined || input.outcome.actualSize !== undefined)
+        ? {
+            expected: input.outcome.expectedSize ?? null,
+            actual: input.outcome.actualSize ?? null,
+          }
+        : null,
+    difference:
+      difference === undefined
+        ? null
+        : {
+            width: difference.width,
+            height: difference.height,
+            totalPixels: difference.totalPixels,
+            differentPixels: difference.differentPixels,
+            differentPixelRatio: difference.differentPixelRatio,
+            maxChannelDelta: difference.maxChannelDelta,
+            firstDifference: difference.firstDifference ?? null,
+          },
+    error: error ?? null,
+    copyErrors: copyErrors.length === 0 ? null : copyErrors,
+  };
+  writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, "utf-8");
+
+  return { expectedPath, actualPath, diffPath: written, reportPath };
+}
+
+/**
+ * The diff PNG: the actual image with every pixel outside `threshold` painted
+ * magenta, so a reviewer sees where the renders diverge without pixel-peeping
+ * two near-identical frames. Same dimensions only — callers check first.
+ */
+function writeDiffPng(
+  expectedPath: string,
+  actualPath: string,
+  outPath: string,
+  difference: ImageDifference,
+  threshold: number,
+): string | undefined {
+  try {
+    const expected = decodeBuffer(readFileSync(expectedPath));
+    const actual = decodeBuffer(readFileSync(actualPath));
+    if (expected.width !== actual.width || expected.height !== actual.height) {
+      return undefined;
+    }
+    const png = new PNG({ width: actual.width, height: actual.height });
+    for (let pixel = 0; pixel < difference.totalPixels; pixel += 1) {
+      const offset = pixel * 4;
+      let delta = 0;
+      for (let channel = 0; channel < 4; channel += 1) {
+        delta = Math.max(delta, Math.abs(expected.data[offset + channel]! - actual.data[offset + channel]!));
+      }
+      if (delta > threshold) {
+        png.data[offset] = 255;
+        png.data[offset + 1] = 0;
+        png.data[offset + 2] = 255;
+        png.data[offset + 3] = 255;
+      } else {
+        png.data[offset] = actual.data[offset]!;
+        png.data[offset + 1] = actual.data[offset + 1]!;
+        png.data[offset + 2] = actual.data[offset + 2]!;
+        png.data[offset + 3] = actual.data[offset + 3]!;
+      }
+    }
+    writeFileSync(outPath, PNG.sync.write(png));
+    return outPath;
+  } catch {
+    // A diff image is diagnostic, not load-bearing: if it cannot be produced
+    // the JSON report and the image copies still stand on their own.
+    return undefined;
   }
 }
 
@@ -101,6 +265,10 @@ function compareDecodedPngs(
     throw new ImageComparisonError(
       `cannot compare renders with different dimensions: ` +
         `expected ${expected.width}×${expected.height}, received ${actual.width}×${actual.height}`,
+      {
+        expected: { width: expected.width, height: expected.height },
+        actual: { width: actual.width, height: actual.height },
+      },
     );
   }
 

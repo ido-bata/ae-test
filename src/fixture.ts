@@ -34,15 +34,56 @@ import type {
 export class HostNotOwnedError extends Error {
   readonly kind: "attached" | "unknown";
   readonly evidence: string;
+  /**
+   * What the refusal-time `close()` reported, when it answered. On "unknown"
+   * ownership the host may be one this run just started, so whether it actually
+   * quit is the difference between a clean refusal and a leftover process.
+   */
+  readonly quit: boolean | undefined;
+  readonly quitReason: string | undefined;
+  /** Set when the refusal-time `close()` itself threw, so no result exists. */
+  readonly closeError: string | undefined;
 
-  constructor(kind: "attached" | "unknown", evidence: string) {
+  constructor(
+    kind: "attached" | "unknown",
+    evidence: string,
+    close?: { readonly quit?: boolean; readonly reason?: string; readonly error?: string },
+  ) {
+    const tail =
+      kind === "attached"
+        ? "It was left untouched. Quit it and run again."
+        : close?.error !== undefined
+          ? `ae-test could not prove the After Effects it found is its own, and the attempt to close the session failed (${close.error}). An After Effects may still be running (possibly the one this run just started): check for a leftover process before running again.`
+          : close?.quit === false
+            ? "ae-test could not prove the After Effects it found is its own, so it asked the session to close — but the host reports it was not quit. An After Effects may still be running (possibly the one this run just started): check for a leftover process before running again."
+            : "ae-test could not prove the After Effects it found is its own, so it asked the session to close. If an After Effects is still running afterwards, it may be a leftover this run started — quit it and run again.";
     super(
       `After Effects is ${kind === "attached" ? "already running" : "of unknown ownership"} (${evidence}); ` +
-        "ae-test only runs against an After Effects it starts. Quit it and run again.",
+        `ae-test only runs against an After Effects it starts. ${tail}`,
     );
     this.name = "HostNotOwnedError";
     this.kind = kind;
     this.evidence = evidence;
+    this.quit = close?.quit;
+    this.quitReason = close?.reason;
+    this.closeError = close?.error;
+  }
+}
+
+/**
+ * The test's context handles were revoked: the runner reached the test's
+ * terminal state (settled, timed out, failed, or interrupted) and tore the
+ * session down. A body that outlived its budget cannot be cancelled — this
+ * error is how its remaining calls are refused instead of reaching a closed
+ * session, an unlisted artifact write, or a shared baseline.
+ */
+export class TestContextRevokedError extends Error {
+  constructor() {
+    super(
+      "the test's context was revoked when the test reached its terminal state; " +
+        "its After Effects session, fixture and snapshot handles no longer accept work",
+    );
+    this.name = "TestContextRevokedError";
   }
 }
 
@@ -81,6 +122,12 @@ export class TestFixture {
   readonly #attachments: Artifact[] = [];
   /** Every project fixture this test resolved, in the order it first did. */
   readonly #fixtures: FixtureDigest[] = [];
+  /**
+   * Set when the runner ends this test's context. Work the body left running
+   * keeps its references, but every handle it was given refuses new use —
+   * see `revoke`.
+   */
+  #revoked = false;
 
   constructor(info: TestInfo, options: FixtureOptions) {
     this.#info = info;
@@ -90,6 +137,34 @@ export class TestFixture {
 
   get testInfo(): TestInfo {
     return this.#info;
+  }
+
+  /**
+   * Whether this test's context handles currently refuse work. The runner
+   * revokes them the moment it stops attributing work to the test — when the
+   * body settles, and when its budget or the run's abort cuts the wait short.
+   */
+  get revoked(): boolean {
+    return this.#revoked;
+  }
+
+  /**
+   * Ends this test's context. Idempotent; safe to call on every exit path.
+   *
+   * Revocation cannot cancel what the body already dispatched — an in-flight
+   * operation still races teardown inside ae-a8n — it only guarantees that no
+   * *new* operation, attachment, or snapshot write leaves through the handles
+   * the test was given. Detached asynchronous work the body spawned is outside
+   * this guarantee entirely: JavaScript offers no way to take it back.
+   */
+  revoke(): void {
+    this.#revoked = true;
+  }
+
+  #assertActive(): void {
+    if (this.#revoked) {
+      throw new TestContextRevokedError();
+    }
   }
 
   get fixture(): Fixture {
@@ -129,8 +204,20 @@ export class TestFixture {
       });
       const ownership = session.ownership();
       if (ownership.kind !== "owned") {
-        await session.close();
-        throw new HostNotOwnedError(ownership.kind, ownership.evidence);
+        // close() only quits a host the session owns, so on "unknown" the AE
+        // may still be running afterwards — capture what it reported so the
+        // refusal can say whether a leftover is likely.
+        let close: { quit?: boolean; reason?: string; error?: string } | undefined;
+        try {
+          const result = await session.close();
+          close = {
+            quit: result.quit,
+            ...(result.reason === undefined ? {} : { reason: result.reason }),
+          };
+        } catch (error) {
+          close = { error: error instanceof Error ? error.message : String(error) };
+        }
+        throw new HostNotOwnedError(ownership.kind, ownership.evidence, close);
       }
       this.#session = session;
     }
@@ -226,6 +313,7 @@ export class TestFixture {
    * opened even if the file changes afterwards.
    */
   project(name: string): string {
+    this.#assertActive();
     const dir = this.#options.projectsDir ?? resolve(process.cwd(), "fixtures");
     const path = resolve(dir, name);
     try {
@@ -255,6 +343,7 @@ export class TestFixture {
   }
 
   attach(name: string, contents: string | Uint8Array): Promise<Artifact> {
+    this.#assertActive();
     const path = join(this.#info.outputDir, name);
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, contents);

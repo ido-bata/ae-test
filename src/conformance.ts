@@ -158,7 +158,13 @@ export type ConformanceRecord = {
     readonly name: string;
     readonly message: string;
     readonly phase?: string;
-    readonly ownership?: { readonly kind: string; readonly evidence: string };
+    readonly ownership?: {
+      readonly kind: string;
+      readonly evidence: string;
+      readonly quit?: boolean;
+      readonly quitReason?: string;
+      readonly closeError?: string;
+    };
   };
   readonly diagnostics: readonly ConformanceDiagnostic[];
 };
@@ -606,6 +612,7 @@ function classify(result: TestResult): {
     case "blocked":
       return { result: "BLOCKED", classification: "blocked" };
     case "timed-out":
+    case "interrupted":
       return { result: "UNKNOWN", classification: "unknown" };
     case "failed":
       if (isRefusal(result)) {

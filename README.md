@@ -28,8 +28,28 @@ test("Gaussian Blur changes the pixels", async ({ ae, fixture, expectFrame }) =>
 npx ae-test specs/blur.spec.mjs
 ```
 
-> **Alpha.** Published under the `next` dist-tag. The API may change between
-> alphas, and only macOS has been run against a real After Effects (below).
+Or configure the project once and let the CLI discover the suite:
+
+```json
+// ae-test.config.json
+{
+  "specs": ["specs/**/*.spec.mjs"],
+  "host": "fake",
+  "resultsDir": ".ae-test-results",
+  "baselineDir": "__snapshots__",
+  "projectsDir": "fixtures"
+}
+```
+
+```bash
+npx ae-test          # runs what the config selects, against the fake host
+```
+
+> **Beta.** `0.2.0-beta.2` is the current candidate; the `next` dist-tag
+> carries pre-releases. The API is stabilising but may still change between
+> betas — breaking changes land in beta releases and are listed in the
+> CHANGELOG. Only macOS has been run against a real After Effects (below),
+> and the current candidate has not been re-verified there yet.
 
 ## What has been verified, and how
 
@@ -50,18 +70,23 @@ behaved; only a real-host run says that.
 npm install --save-dev @ido-bata/ae-test@next
 ```
 
-`@ido-bata/ae-a8n` comes with it, pinned to exactly `0.1.0-alpha.2`.
+`@ido-bata/ae-a8n` comes with it, pinned to exactly `0.2.0`.
 
-Requirements: Node 22 or later (24 to write specs in TypeScript, see below).
-For a real host, additionally: macOS, After Effects installed in the default
+Requirements: Node 22 or later. TypeScript specs need a Node that strips
+types itself — 22.18+ or 24+ (the CLI exits 2 with a clear message on older
+22.x); `.mjs`/`.js` specs run on any supported Node. For a real host,
+additionally: macOS, After Effects installed in the default
 location, **Settings → Scripting & Expressions → Allow Scripts to Write Files
 and Access Network** on, and **After Effects not running** when the suite
 starts.
 
+A copyable starting project — config, one fake-host spec, a real-host
+variant guide — is in [`examples/consumer/`](examples/consumer/README.md).
+
 ## Writing tests
 
 A spec is an ES module that calls `test()`; the CLI imports it. Specs can be
-`.mjs`/`.js`, or `.ts` on a Node that strips types (Node 24 does).
+`.mjs`/`.js`, or `.ts` on a Node that strips types (22.18+ or 24).
 
 ```js
 import { test, skip } from "@ido-bata/ae-test";
@@ -78,7 +103,7 @@ skip("not yet", async () => {});
 | `testInfo` | `{ id, title, file, outputDir }` |
 | `expect(value)` | `toBe`, `toEqual`, `toMatchObject`, `toBeDefined`, `toBeGreaterThan`, `toBeLessThan`, `toBeCloseTo`, `.not` |
 | `expect(promise).rejects()` | Resolves to an expectation on the rejection: `toMatchObject({ name: "EntityNotFoundError", kind: "composition" })` |
-| `expectFrame(frame)` | `toHaveSize(w, h)`, `toPath(pattern)`, `await toMatchFrame(other, options?)`, `await toMatchSnapshot(name, options?)` |
+| `expectFrame(frame)` | `toHaveSize(w, h)`, `toPath(pattern)`, `await toMatchFrame(other, options?)`, `await toDifferFromFrame(other, options?)`, `await toMatchSnapshot(name, options?)` |
 
 **Conformance.** A test can name the ae-devtools capability IDs it is
 evidence for, and the strongest claim it may make:
@@ -127,10 +152,14 @@ the rest are `blocked`, and that After Effects is not touched. At the end of a t
 nothing is ever saved, so fixtures are not modified (checked on the real
 host).
 
-**Results.** `passed`, `failed`, `timed-out`, `skipped`, or `blocked`. A test
-whose After Effects did not quit is not reported as passed, and once a host
-cannot be vouched for the remaining tests are `blocked` instead of being run
-into it.
+**Results.** `passed`, `failed`, `timed-out`, `interrupted`, `skipped`, or
+`blocked`. A test whose After Effects did not quit is not reported as
+passed, and once a host cannot be vouched for the remaining tests are
+`blocked` instead of being run into it. `--timeout` bounds the test body;
+session launch and teardown have their own bounds, and SIGINT/SIGTERM
+interrupts the run cleanly (exit 130) with `report.json` already on disk —
+it is rewritten after every test, so a crash still leaves the evidence
+collected so far.
 
 **Static host methods.** A project's own host operations are declared in an
 extension module and compiled ahead of time by `ae-a8n`, then reached through
@@ -161,11 +190,28 @@ account is `ae-a8n setup`'s job, not this package's.
 
 **Snapshots** compare the SHA-256 of the rendered PNG bytes by default:
 exact, no tolerance. `--update-snapshots` writes baselines to
-`<results-dir>/__snapshots__/<test id>--<name>.sha256` plus the baseline PNG
-as `<test id>--<name>.png`. They live inside the results directory, so keep
-that directory (or copy the baselines back into it) between runs; a missing
-baseline fails and names the render it would have recorded. Test ids are
-derived from the spec's path, so moving a spec renames its baselines.
+`<baseline-dir>/<environment>/<test id>--<name>.sha256` plus the baseline PNG
+as `<test id>--<name>.png`. `--baseline-dir` defaults to `./__snapshots__` at
+the project root — a directory meant to be **committed**, unlike the results
+directory — so a clean checkout or a CI workspace finds the same baselines.
+A normal run never writes there; only `--update-snapshots` does, and only for
+the baselines the run actually compares.
+
+Baselines are grouped per environment so they cannot collide: the key is the
+transport kind plus, for a real After Effects, the OS/arch and the host's own
+version and build (`script-invocation-darwin-arm64-ae-…`). The in-process fake
+host renders identically everywhere, so its namespace is just
+`fake-in-process` — a baseline recorded against the fake is never compared
+against a real render, and vice versa. Real-host baselines are only portable
+to the same OS/arch/AE version; treat them as per-environment evidence, not a
+cross-machine contract.
+
+Baselines recorded before 0.2.0-beta lived at
+`<results-dir>/__snapshots__/`. They are still read as a fallback, but
+nothing is written there any more; re-run once with `--update-snapshots` (or
+move the files into the matching `<baseline-dir>/<environment>/`) to migrate.
+Test ids are derived from the spec's path, so moving a spec renames its
+baselines.
 
 When byte-exact comparison is too strict, pass pixel tolerances as the second
 argument. The PNGs are decoded to RGBA and compared per channel:
@@ -187,6 +233,18 @@ baseline written before image baselines existed needs one
 
 `expectFrame(after).toMatchFrame(before, options)` applies the same pixel
 comparison directly between two renders, without a stored baseline.
+`expectFrame(after).toDifferFromFrame(before, options)` is the inverted
+assertion: it passes only when the pixels differ beyond the tolerances, so
+a change that produces identical output cannot pass by writing to a
+different path.
+
+When a pixel comparison fails, the runner leaves the evidence next to the
+render under `<test id>/diffs/`: copies of the expected and actual images, a
+`*.diff.png` with every diverging pixel marked, and a `*.diff.json` with the
+counts, ratio, options and first difference. They are listed in `report.json`
+as `diff` artifacts, and the failure message points at the JSON file. A
+comparison that cannot run pixel-wise (a size mismatch, an undecodable file)
+still leaves the image copies and the JSON record saying why.
 
 ## Fixtures
 
@@ -201,9 +259,13 @@ the intended outcome.
 ## Running
 
 ```text
-ae-test <files...> [options]
+ae-test [files...|--spec <glob>...] [options]
 
-  --results-dir <dir>     artifacts, traces, snapshots, report.json (default .ae-test-results)
+  --config <file>        project config (default ./ae-test.config.json)
+  --spec <glob>          select specs by glob, repeatable (exclusive with files)
+  --real-host            real After Effects even when config says "fake"
+  --results-dir <dir>     artifacts, traces, report.json (default .ae-test-results)
+  --baseline-dir <dir>    snapshot baselines to commit (default ./__snapshots__)
   --projects-dir <dir>    where .aep fixtures live (default fixtures)
   --timeout <ms>          per-test budget (default 60000)
   --grep <substring>      only tests whose title contains this
@@ -221,19 +283,38 @@ ae-test <files...> [options]
 
 Exit codes: **0** everything passed or was skipped, **1** something failed,
 timed out, or the run proved nothing (empty selection, not-ok conformance
-evidence), **2** the run never happened (no files, a bad flag, a crash before
-the first test). The fake host is never used unless `--fake-host` is given;
-it comes from `@ido-bata/ae-a8n/testing`, which ae-a8n marks unstable.
+evidence), **2** the run never happened (no files, a bad flag, a bad config,
+a crash before the first test). The fake host is never used unless `--fake-host`
+is given or the config says `"host": "fake"`; it comes from
+`@ido-bata/ae-a8n/testing`, which ae-a8n marks unstable.
 
-Programmatic use: `run({ files, resultsDir, projectsDir, timeoutMs, grep,
-capabilityFilter, updateSnapshots, transport, conformance })` resolves to a
+**Project config.** `ae-test.config.json` at the project root (or `--config
+<file>`) carries the options you would otherwise repeat: `specs` (glob
+patterns), `projectsDir`, `resultsDir`, `baselineDir`, `timeoutMs`, `grep`,
+`capabilities`, `host` (`"real"` | `"fake"`), `hostScript`, `installDir` and
+`hostEnvironment`. Precedence is per option: **CLI flag > config > default**.
+Paths inside the config resolve against the config file's own directory, so
+`--config path/to/project/ae-test.config.json` works from anywhere. Unknown
+keys and wrong types are setup errors (exit 2), not warnings.
+
+**Spec selection.** Most explicit wins: positional files, then `--spec`
+globs (working-directory relative), then `specs` in the config (config-dir
+relative), then the defaults `**/*.spec.{ts,js,mjs}` under the project root.
+`node_modules` and dot-directories are never searched. A selection that
+matches nothing exits 2 — a run that found no tests is never green.
+
+Programmatic use: `run({ files, resultsDir, baselineDir, projectsDir,
+timeoutMs, grep, capabilityFilter, updateSnapshots, transport, conformance })`
+resolves to a
 `RunSummary`; `formatRun` and `exitCodeFor` turn it into what the CLI prints
 and returns. `capabilityFilter` keeps only tests that declare at least one of
 the listed capability IDs.
 `conformance` is `{ host: "fake" | "real", catalogPath?, sourceSha?, runId?,
 outPath?, pluginBinaries?, sdkBinaries? }`; `buildConformanceReport` /
 `writeConformanceReport` are also exported for consumers that assemble
-their own summary.
+their own summary. Config file handling is exported too:
+`loadConfigFile` / `findConfigFile` / `discoverSpecs` and the `AeTestConfig`
+type, for tools that resolve a project the way the CLI does.
 
 ## Getting the results
 
@@ -243,16 +324,27 @@ their own summary.
                                     and the session it ran against (uid, audit session id, host
                                     version, declared extension methods, fixture SHA-256s)
   conformance.json                  per-test capability evidence, only with --conformance
-  __snapshots__/                    baselines (sha256 digest + PNG)
   <test id>/
     trace.jsonl                     ae-a8n's record of every operation (op, status, durationMs, args, result/error)
     artifacts/[subdirectory/]*.png  renders
+    diffs/                          failed image comparisons: image copies, diff PNG, JSON diagnostic
     a8n-session.json, inbox/, outbox/, staging/   the session's request/response envelopes
+```
+
+Snapshot baselines are not here — they live in `--baseline-dir`
+(`./__snapshots__/<environment>/` by default), a tree meant to be committed:
+
+```text
+__snapshots__/
+  fake-in-process/                  in-process fake host baselines
+  script-invocation-darwin-arm64-ae-<version>-<build>/   real-host baselines
+    <test id>--<name>.sha256        rendered bytes' digest
+    <test id>--<name>.png           the baseline image for pixel comparison
 ```
 
 A failure in the console names the last After Effects operations before it,
 from the trace. `report.json` lists each artifact with its path, size and
-kind (`render`, `trace`, `attachment`). In CI, upload the results directory
+kind (`render`, `trace`, `attachment`, `diff`). In CI, upload the results directory
 as an artifact.
 
 ## Developing
@@ -261,12 +353,18 @@ as an artifact.
 npm ci
 npm run build          # specs and tests import ../dist
 npm run check          # typecheck, lint, tests
-npm run ae-test -- specs/plugin-render.spec.ts --fake-host --update-snapshots
+npm run ae-test -- specs/plugin-render.spec.ts --fake-host   # baselines are committed under __snapshots__/
 node scripts/check-packed-package.js
 ```
 
 `@ido-bata/ae-a8n` is pinned to one exact npm version
 ([docs/dependency-on-ae-a8n.md](docs/dependency-on-ae-a8n.md)).
+
+The public API surface, file formats, exit codes, versioning rules and the
+supported-environment statement are fixed in
+[docs/api.md](docs/api.md). Verification evidence levels live in
+[docs/verification.md](docs/verification.md); release procedure in
+[docs/releasing.md](docs/releasing.md).
 
 ## Ecosystem
 

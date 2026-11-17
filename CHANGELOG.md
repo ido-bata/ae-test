@@ -1,6 +1,124 @@
 # Changelog
 
-## 0.1.0-alpha.1 (unreleased)
+## 0.2.0-beta.2
+
+Depends on `@ido-bata/ae-a8n` `0.2.0` exactly. Second beta on the 0.2
+train: runner lifecycle safety, test-context revocation, and the consumer
+real-host lane documented since beta.1.
+
+### Added
+
+- Runner lifecycle safety (#43): `RunOptions.signal` interrupts a run —
+  the in-flight test reports `interrupted`, unstarted tests report
+  `blocked`, sessions still get a bounded teardown, and the CLI exits 130
+  on SIGINT/SIGTERM (a second signal exits immediately). `teardownTimeoutMs`
+  bounds `session.close()`; a close that never answers is reported as
+  `TeardownTimeoutError` instead of stalling the run. `drainTimeoutMs`
+  bounds how long a timed-out or interrupted body is given to settle
+  before teardown; a body still running at that point is recorded as
+  `failure.bodyStillRunning`. `report.json` is rewritten after every
+  result with `partial: true`, so a crash leaves the evidence collected
+  so far. A spec file that fails to import is now its own `failed` result
+  (`failure.phase: "load"`) instead of aborting the whole run.
+- `TestStatus` gains `"interrupted"`; `TestFailure.phase` gains `"load"`;
+  `RunSummary` gains optional `partial`. All additive under
+  `ae-test.report/v1`.
+- A copyable consumer project ships in the tarball at
+  `examples/consumer/` (config, a fake-host spec, and a real-host guide);
+  `scripts/check-packed-package.js` now installs and runs it verbatim.
+- The CLI exits 2 with a clear message when TypeScript specs are selected
+  on a Node too old to strip types (<22.18), instead of failing deep in
+  module resolution.
+- `expectFrame(frame).toDifferFromFrame(other, options?)` (#60): the
+  inverted frame comparison — it passes only when the two renders' pixels
+  differ beyond the same tolerances `toMatchFrame` honours, so a no-op
+  change cannot pass by producing a different file path. A failed
+  "differ" leaves the same diff evidence artifacts as a failed "match".
+- Test context revocation (#50, call-time check #55): once a test reaches its terminal state —
+  body settled, timed out, failed, or interrupted — the handles it was
+  given refuse further use with `TestContextRevokedError`. That covers
+  `context.ae` and every object reachable from it (`Project`, `Comp`,
+  `Layer`, `Effect`, `Parameter`, …), `fixture.project`/`attach`, and
+  `expectFrame` including expectations already obtained. Revocation is
+  checked again at call time, so a method reference captured before the
+  terminal state (`const set = parameter.set`) is refused just like a
+  property read after it. A body that outlives its budget can no longer
+  dispatch new host operations, write unlisted artifacts, or touch
+  snapshot baselines, and the next test proceeds once teardown succeeds.
+  In-flight operations and detached asynchronous work remain outside the
+  guarantee; the boundary is
+  documented in `docs/api.md`. `TestContextRevokedError` is a new public
+  export (minor).
+
+### Fixed
+
+- The consumer real-host smoke spec no longer passes as a no-op (#60): it
+  asserted only that two render paths differed, picked "the first OneD"
+  parameter, and ran against a fixture where Gaussian Blur changes no
+  pixels. It now builds a disposable comp with a text layer at run time
+  (no `.aep` fixture required), selects the Blurriness parameter by match
+  name, and asserts the before/after renders differ in pixels via
+  `toDifferFromFrame`.
+
+### Changed
+
+- `timeoutMs` semantics are now explicit: the budget covers the test body
+  only. Session launch and teardown have their own bounds and are
+  documented as such in `docs/api.md`, the CLI usage text and the
+  `TestOptions` comment.
+
+## 0.2.0-beta.1
+
+Depends on `@ido-bata/ae-a8n` `0.1.0-alpha.2` exactly. First beta: breaking
+changes from the alpha line are collected here; the public contract they
+settle is documented in `docs/api.md`.
+
+### Added
+
+- Project config: `ae-test.config.json` (or `--config <file>`) carries `specs`
+  globs, `projectsDir`, `resultsDir`, `baselineDir`, `timeoutMs`, `grep`,
+  `capabilities`, `host` (`"real"` | `"fake"`), `hostScript`, `installDir` and
+  `hostEnvironment`. Precedence is CLI > config > default per option; config
+  paths resolve against the config file's directory; unknown keys and wrong
+  types exit 2. `loadConfigFile` / `findConfigFile` / `discoverSpecs` and the
+  `AeTestConfig` type are exported for programmatic consumers.
+- Spec discovery: with no positional files, `--spec <glob>` (repeatable) or
+  `specs` in config selects specs; otherwise `**/*.spec.{ts,js,mjs}` under the
+  project root. `node_modules` and dot-directories are skipped, results are
+  sorted and deduplicated, and an empty selection exits 2.
+- `--real-host` overrides a config `"host": "fake"` for a single run.
+- `HostNotOwnedError` now says which refusal it is: "attached" reports the
+  host was left untouched, while "unknown" explains the After Effects may be
+  a leftover this run started. The refusal-time `close()` result travels into
+  `report.json` as `failure.ownership.quit` / `quitReason` / `closeError`, so
+  a reader can tell a clean refusal from a possibly-running leftover without
+  parsing text.
+- Public contract fixed ahead of 1.0 (`docs/api.md`): the export surface is
+  pinned by `test/api-surface.test.ts` and a packed-consumer type check;
+  `report.json` gains a `schema: "ae-test.report/v1"` field; semver rules,
+  file-format versions, the ae-a8n pin policy and the supported-environment
+  statement (macOS arm64 + AE 2026 only; Windows unsupported) are documented.
+- Image diff artifacts: a failed pixel comparison (`toMatchSnapshot` with
+  tolerances, `toMatchFrame`, including comparisons that cannot run
+  pixel-wise such as a size mismatch) now leaves evidence under the test's
+  output directory — copies of both images, a `*.diff.png` marking diverging
+  pixels, and a `*.diff.json` diagnostic with counts, ratio, options and the
+  first difference. They appear in `report.json` as `diff` artifacts and the
+  failure message points at the JSON record. `Artifact.kind` gains `"diff"`.
+
+### Changed
+
+- Snapshot baselines moved out of the results directory into a committed,
+  environment-scoped tree. `RunOptions.baselineDir` / `--baseline-dir` selects
+  the root (default `./__snapshots__`); baselines are grouped per environment
+  — transport kind, and for a real host OS/arch plus the AE version and build —
+  so a fake-host or different-version baseline is never compared against this
+  run's renders. A normal run is read-only; `--update-snapshots` writes only
+  the baselines the run compares. Baselines recorded before this change under
+  `<results-dir>/__snapshots__/` are still read as a fallback but never
+  written; re-run `--update-snapshots` once to migrate.
+
+## 0.1.0-alpha.1
 
 Depends on `@ido-bata/ae-a8n` `0.1.0-alpha.2` exactly — the first published
 version that carries the static host extension API, and the reason the

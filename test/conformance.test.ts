@@ -84,6 +84,7 @@ function realSession(): NonNullable<TestResult["session"]> {
 
 function summary(results: readonly TestResult[]): RunSummary {
   return {
+    schema: "ae-test.report/v1",
     results,
     durationMs: 1,
     resultsDir: dir,
@@ -543,6 +544,7 @@ describe("runner integration", () => {
       projectsDir: PROJECTS_DIR,
       transport: new FakeAfterEffectsTransport(),
       updateSnapshots: true,
+      baselineDir: join(dir, "baselines"),
       conformance: {
         host: "fake",
         catalogPath,
@@ -594,6 +596,7 @@ describe("runner integration", () => {
       projectsDir: PROJECTS_DIR,
       transport: new FakeAfterEffectsTransport(),
       updateSnapshots: true,
+      baselineDir: join(dir, "baselines"),
       conformance: {
         host: "fake",
         catalogPath,
@@ -618,6 +621,7 @@ describe("runner integration", () => {
       projectsDir: PROJECTS_DIR,
       transport: new FakeAfterEffectsTransport(),
       updateSnapshots: true,
+      baselineDir: join(dir, "baselines"),
       conformance: { host: "real", runId: "declared-real" },
     });
 
@@ -699,6 +703,7 @@ describe("runner integration", () => {
       projectsDir: PROJECTS_DIR,
       transport: new FakeAfterEffectsTransport(),
       updateSnapshots: true,
+      baselineDir: join(dir, "baselines"),
       capabilityFilter: ["ae.operation.render.frame"],
     });
 

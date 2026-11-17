@@ -66,10 +66,27 @@ export type {
   HostProvenance,
 } from "./conformance.js";
 
-export { HostNotOwnedError, TestFixture } from "./fixture.js";
+export {
+  CONFIG_FILE_NAME,
+  DEFAULT_SPEC_PATTERNS,
+  ConfigError,
+  discoverSpecs,
+  findConfigFile,
+  loadConfigFile,
+} from "./config.js";
+export type { AeTestConfig, AeTestHost, LoadedConfig } from "./config.js";
+
+export { HostNotOwnedError, TestContextRevokedError, TestFixture } from "./fixture.js";
 export type { FixtureOptions } from "./fixture.js";
 
-export { run, loadTestFiles, countByStatus, hasFailures, DEFAULT_RESULTS_DIR } from "./runner.js";
+export {
+  run,
+  loadTestFiles,
+  countByStatus,
+  hasFailures,
+  DEFAULT_RESULTS_DIR,
+  DEFAULT_BASELINE_DIR,
+} from "./runner.js";
 export type { RunOptions } from "./runner.js";
 
 export {

@@ -8,21 +8,43 @@
  * "the run never happened" and retrying will not help.
  */
 
-import { existsSync } from "node:fs";
+import { statSync } from "node:fs";
 import { resolve } from "node:path";
 
 import type { HostTransport } from "@ido-bata/ae-a8n";
 
+import {
+  CONFIG_FILE_NAME,
+  ConfigError,
+  DEFAULT_SPEC_PATTERNS,
+  discoverSpecs,
+  findConfigFile,
+  loadConfigFile,
+  type AeTestConfig,
+} from "./config.js";
 import { exitCodeFor, formatRun } from "./report.js";
 import { run, type RunOptions } from "./runner.js";
 
-const USAGE = `ae-test <files...> [options]
+const USAGE = `ae-test [files...|--spec <glob>...] [options]
+
+With no files and no --spec, specs are discovered with
+${DEFAULT_SPEC_PATTERNS.map((pattern) => `"${pattern}"`).join(", ")} under the
+project root — the config file's directory when ${CONFIG_FILE_NAME} is used.
 
 Options:
-  --results-dir <dir>     Where artifacts, traces, and snapshots go
+  --config <file>        Project config (default: ./${CONFIG_FILE_NAME})
+  --spec <glob>          Select spec files by glob, repeatable; relative to
+                         the working directory. Exclusive with file arguments
+  --real-host            Run against a real After Effects even when the
+                         config says "fake"
+  --results-dir <dir>     Where artifacts, traces, and the report go
                           (default: .ae-test-results)
+  --baseline-dir <dir>    Where snapshot baselines live, meant to be
+                          committed (default: ./__snapshots__, grouped per
+                          environment). Read-only unless --update-snapshots
   --projects-dir <dir>    Where .aep fixtures live (default: fixtures)
-  --timeout <ms>          Per-test budget (default: 60000)
+  --timeout <ms>          Per-test body budget (default: 60000); launch
+                          and teardown have their own bounds
   --grep <substring>      Only run tests whose title contains this
   --capability <id>       Only run tests declaring this capability ID
                           (repeatable)
@@ -44,7 +66,11 @@ Options:
 `;
 
 type CliOptions = {
+  config?: string;
+  specs?: string[];
+  realHost?: boolean;
   resultsDir?: string;
+  baselineDir?: string;
   projectsDir?: string;
   timeoutMs?: number;
   grep?: string;
@@ -82,6 +108,21 @@ function parse(argv: readonly string[]): Parsed {
       case "-h":
       case "--help":
         return { files: [], options, error: "help" };
+      case "--config": {
+        const value = next();
+        if (value === undefined) return { files, options, error: "--config needs a value" };
+        options.config = value;
+        break;
+      }
+      case "--spec": {
+        const value = next();
+        if (value === undefined) return { files, options, error: "--spec needs a value" };
+        (options.specs ??= []).push(value);
+        break;
+      }
+      case "--real-host":
+        options.realHost = true;
+        break;
       case "--fake-host":
         options.fakeHost = true;
         break;
@@ -92,6 +133,12 @@ function parse(argv: readonly string[]): Parsed {
         const value = next();
         if (value === undefined) return { files, options, error: "--results-dir needs a value" };
         options.resultsDir = value;
+        break;
+      }
+      case "--baseline-dir": {
+        const value = next();
+        if (value === undefined) return { files, options, error: "--baseline-dir needs a value" };
+        options.baselineDir = value;
         break;
       }
       case "--projects-dir": {
@@ -187,14 +234,81 @@ async function main(): Promise<number> {
     process.stderr.write(`${error}\n\n${USAGE}`);
     return 2;
   }
-  if (files.length === 0) {
-    process.stderr.write(`no test files given\n\n${USAGE}`);
+  if (options.fakeHost === true && options.realHost === true) {
+    process.stderr.write("--fake-host and --real-host are mutually exclusive\n");
+    return 2;
+  }
+  if (files.length > 0 && options.specs !== undefined) {
+    process.stderr.write("file arguments and --spec are mutually exclusive\n");
     return 2;
   }
 
-  const missing = files.filter((file) => !existsSync(resolve(file)));
-  if (missing.length > 0) {
-    process.stderr.write(`test file not found: ${missing.join(", ")}\n`);
+  // Project config: explicit --config, else ./ae-test.config.json. A config
+  // that cannot be read or validated is a setup error, like a bad flag.
+  let config: AeTestConfig = {};
+  let configDir = process.cwd();
+  try {
+    const configPath =
+      options.config !== undefined ? resolve(options.config) : findConfigFile();
+    if (configPath !== undefined) {
+      const loaded = loadConfigFile(configPath);
+      config = loaded.config;
+      configDir = loaded.dir;
+    }
+  } catch (error) {
+    if (error instanceof ConfigError) {
+      process.stderr.write(`${error.message}\n`);
+      return 2;
+    }
+    throw error;
+  }
+
+  // Spec selection, most explicit first: positional files, then --spec
+  // globs, then config.specs, then the default discovery patterns.
+  let specFiles: string[];
+  let searched: string;
+  if (files.length > 0) {
+    specFiles = files;
+    searched = "the given files";
+  } else if (options.specs !== undefined) {
+    specFiles = discoverSpecs(options.specs, process.cwd());
+    searched = options.specs.map((pattern) => `"${pattern}"`).join(", ");
+  } else {
+    const patterns = config.specs ?? DEFAULT_SPEC_PATTERNS;
+    specFiles = discoverSpecs(patterns, configDir);
+    searched = patterns.map((pattern) => `"${pattern}"`).join(", ");
+  }
+
+  if (files.length > 0) {
+    const missing = files.filter((file) => {
+      try {
+        return !statSync(resolve(file)).isFile();
+      } catch {
+        return true;
+      }
+    });
+    if (missing.length > 0) {
+      process.stderr.write(`test file not found: ${missing.join(", ")}\n`);
+      return 2;
+    }
+  } else if (specFiles.length === 0) {
+    process.stderr.write(
+      `no test files found (${searched} under ${configDir === process.cwd() ? "the working directory" : configDir})\n`,
+    );
+    return 2;
+  }
+
+  // TypeScript specs need a Node that strips types itself (Node 22.18+ /
+  // 24+). Without it the import fails deep inside the runner with a
+  // module-resolution error that does not name the real problem.
+  const typeStripping = (process.features as { typescript?: unknown }).typescript;
+  const tsSpecs = specFiles.filter((file) => /\.[cm]?tsx?$/.test(file));
+  if (tsSpecs.length > 0 && typeof typeStripping !== "string") {
+    process.stderr.write(
+      `${tsSpecs.length} TypeScript spec file(s) selected, but this Node (${process.version}) ` +
+        `cannot strip types. Use Node 22.18+ or 24+, rename the specs to .mjs/.js, ` +
+        `or compile them first.\n`,
+    );
     return 2;
   }
   if (
@@ -210,27 +324,48 @@ async function main(): Promise<number> {
     return 2;
   }
 
-  // The fake host is opt-in and explicit. Silently substituting a fake for a
-  // real After Effects would be the worst possible default: every test would
-  // go green while proving nothing.
-  const transport = options.fakeHost === true ? await createFakeTransport() : undefined;
+  // CLI > config > default, per option. Config paths are relative to the
+  // config file's directory; CLI paths stay relative to the working
+  // directory, resolved downstream as before.
+  const pick = <T>(cli: T | undefined, cfg: T | undefined): T | undefined => cli ?? cfg;
+  const cfgPath = (value: string | undefined): string | undefined =>
+    value === undefined ? undefined : resolve(configDir, value);
+  const resultsDir = pick(options.resultsDir, cfgPath(config.resultsDir));
+  const baselineDir = pick(options.baselineDir, cfgPath(config.baselineDir));
+  const projectsDir = pick(options.projectsDir, cfgPath(config.projectsDir));
+  const timeoutMs = pick(options.timeoutMs, config.timeoutMs);
+  const grep = pick(options.grep, config.grep);
+  const capabilities = pick(options.capabilities, config.capabilities);
+  const hostScript = pick(options.hostScript, cfgPath(config.hostScript));
+  const installDir = cfgPath(config.installDir);
+
+  // The fake host is opt-in and explicit at every level: a CLI flag, a
+  // config "host", or nothing — and nothing means real. Silently substituting
+  // a fake for a real After Effects would be the worst possible default:
+  // every test would go green while proving nothing.
+  const useFake =
+    options.realHost === true ? false : options.fakeHost === true ? true : config.host === "fake";
+  const transport = useFake ? await createFakeTransport() : undefined;
 
   const runOptions: RunOptions = {
-    files,
-    ...(options.resultsDir === undefined ? {} : { resultsDir: options.resultsDir }),
-    ...(options.projectsDir === undefined ? {} : { projectsDir: options.projectsDir }),
-    ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
-    ...(options.grep === undefined ? {} : { grep: options.grep }),
-    ...(options.capabilities === undefined
-      ? {}
-      : { capabilityFilter: options.capabilities }),
+    files: specFiles,
+    ...(resultsDir === undefined ? {} : { resultsDir }),
+    ...(baselineDir === undefined ? {} : { baselineDir }),
+    ...(projectsDir === undefined ? {} : { projectsDir }),
+    ...(timeoutMs === undefined ? {} : { timeoutMs }),
+    ...(grep === undefined ? {} : { grep }),
+    ...(capabilities === undefined ? {} : { capabilityFilter: capabilities }),
     ...(options.updateSnapshots === undefined ? {} : { updateSnapshots: options.updateSnapshots }),
-    ...(options.hostScript === undefined ? {} : { hostScript: options.hostScript }),
+    ...(hostScript === undefined ? {} : { hostScript }),
+    ...(installDir === undefined ? {} : { installDir }),
+    ...(config.hostEnvironment === undefined
+      ? {}
+      : { hostEnvironment: config.hostEnvironment }),
     ...(transport === undefined ? {} : { transport }),
     ...(options.conformance === true
       ? {
           conformance: {
-            host: options.fakeHost === true ? ("fake" as const) : ("real" as const),
+            host: useFake ? ("fake" as const) : ("real" as const),
             ...(options.capabilityCatalog === undefined
               ? {}
               : { catalogPath: options.capabilityCatalog }),
@@ -255,9 +390,34 @@ async function main(): Promise<number> {
     },
   };
 
-  const summary = await run(runOptions);
+  // SIGINT/SIGTERM become an AbortSignal the runner honours: the in-flight
+  // test is interrupted, its session still gets a bounded teardown, the
+  // remaining tests are reported blocked, and report.json is written before
+  // exit. A second signal exits immediately — the first one already asked
+  // for the safe path.
+  const interrupt = new AbortController();
+  let interruptCount = 0;
+  const onInterrupt = (): void => {
+    interruptCount += 1;
+    if (interruptCount > 1) {
+      process.exit(130);
+    }
+    interrupt.abort();
+  };
+  process.on("SIGINT", onInterrupt);
+  process.on("SIGTERM", onInterrupt);
+
+  let summary;
+  try {
+    summary = await run({ ...runOptions, signal: interrupt.signal });
+  } finally {
+    process.off("SIGINT", onInterrupt);
+    process.off("SIGTERM", onInterrupt);
+  }
   process.stdout.write(`${formatRun(summary)}\n`);
-  return exitCodeFor(summary);
+  // 130 is the conventional "killed by SIGINT" status; the report already
+  // records which test was interrupted and which were blocked.
+  return interrupt.signal.aborted ? 130 : exitCodeFor(summary);
 }
 
 async function createFakeTransport(): Promise<HostTransport> {

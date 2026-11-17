@@ -8,9 +8,10 @@ nothing about the other.
 
 `.github/workflows/ci.yml`, Ubuntu, no After Effects:
 
-- `npm ci` with `@ido-bata/ae-a8n@0.1.0-alpha.2` from registry.npmjs.org,
+- `npm ci` with `@ido-bata/ae-a8n@0.2.0` from registry.npmjs.org,
   integrity checked against `package-lock.json`, recorded in the job summary;
-- build, typecheck, lint, 149 tests (runner, fixtures, teardown, snapshots and
+- build, typecheck, lint, and the unit/contract test suite (runner, fixtures,
+  teardown, snapshots and
   pixel-tolerant image comparison, conformance evidence classification,
   transport-provenance host promotion guards, non-ok exit status,
   capability-ID selection, environment compatibility and
@@ -50,11 +51,38 @@ a real `.aep` saved by After Effects with comp `Main` and solid `Solid 1`
 Every run also checks: no modal dialog left in After Effects, After Effects
 not left running, and the fixture's bytes unchanged.
 
+A second harness now exists for the same lane (#52): a clean consumer
+project installs the packed release tarball and runs `ae-test` with
+`installDir` pointed at AE 2026. Its spec needs no `.aep` — it builds a
+disposable comp at run time — and asserts on pixels: Gaussian Blur 2
+changes the render, a parameter write reaches the pixels, and a snapshot
+is recorded then compared on a second run.
+
 | When (UTC) | ae-test | ae-a8n | Result |
 | --- | --- | --- | --- |
 | 2026-10-15 05:15–05:48 | 1261f77 (pre-release) | bb4c197, from a checkout | 20 of 20 runs passed (10 with a third-party CEP extension disabled, 10 enabled) |
 | 2026-10-15 12:30 | 5d30ef6 (this release) | **0.1.0-alpha.0 from npm** | pass: B 4/4 in 21 s, snapshot matched the earlier baseline (`44c9d3df…`), every session quit; A red as intended |
-| 2026-11-11 | 0.1.0-alpha.1 branch (this one) | `0.1.0-alpha.2` from npm | **not run.** The macOS host on this machine is logged in as the console user, and the isolated lane needs a second account that has been logged in once (`offstage doctor`: "no computeruse account"; `ae-a8n doctor`: `A8N-SESSION-003`, uid 501 is the console uid). ae-test does not fall back to the console desktop, so there is no honest real-host row for this branch yet |
+| 2026-11-11 | 0.1.0-alpha.1 branch | `0.1.0-alpha.2` from npm | **not run.** No real-host row was produced for this branch. The *isolated* lane is blocked on machine setup (`offstage doctor`: "no computeruse account"; `ae-a8n doctor`: `A8N-SESSION-003`, uid 501 is the console uid); the *local* lane was not attempted — it needs one-time human consent in After Effects (see below). See #19 for the isolated-lane task and #52 for the local lane |
+| 2026-11-17 02:38 | `7a8efdd` (RC freeze) | `0.1.0-alpha.2` pinned | **failed at launch.** The pin predates ae-a8n #106: After Effects started two same-named processes, ownership stayed `unknown`, and the run failed closed with `HostNotOwnedError` — the designed refusal, not a defect in ae-test. Both instances were left running and quit by hand. See #52 and ae-a8n #105 |
+| 2026-11-17 15:51 | `381055f` (pin bump only) | `0.2.0` from npm | **failed in the spec.** Launch, ownership, render and teardown all worked on the real host; `expect(x).toBeDefined()` then failed on a defined value — an inverted matcher in ae-test itself, fixed as #65 |
+| 2026-11-17 16:2x | `d80a60c` (release head: ae-a8n `0.2.0` pin + #65) | `0.2.0` from npm | **pass.** Packed consumer, two runs: `--update-snapshots` recorded the baseline, then a plain run matched it. 1/1 each (~7.5 s), `cleanup.status=ok`, `quit=true`, no After Effects process left afterwards. No script-trust dialog appeared in either run |
+
+### Local console-session lane
+
+A real-host run does not have to use the isolated lane: the rows above were
+produced by running the `ae-test` CLI directly on the console desktop,
+letting ae-test launch and own its own After Effects (`installDir` selects
+which installation, e.g. AE 2026 over AE 2027). The packed-consumer variant
+of the same lane is what #52 verifies: a third-party-shaped project installs
+the release tarball and drives a real After Effects through the public API.
+
+The human cost is consent, not code: first-launch dialogs, the scripting
+file/network permission, and — when AE asks — the script-trust approval
+whose granularity is still open upstream (ae-a8n #125). On 2026-11-17/18 the
+two smoke runs completed without any script-trust dialog; that is two
+observations on one machine and one consumer, not a general answer.
+`A8N-SESSION-003` is a refusal of the *isolated* lane only — it says nothing
+about the local one.
 
 ### Isolated session (not yet run at all)
 
@@ -66,17 +94,19 @@ account"), and the machine setup it needs — fast-user-switch login, TCC
 grants, AE scripting permission, one Adobe sign-in in that session — is human
 work by design (`ae-a8n setup` will not do it, and nothing here creates an
 account). Until that exists, the only macOS real-host evidence remains the
-2026-10-15 rows above, which used the console session directly.
+console-session rows above.
 
-`report.json` now records `uid`, the GUI session's `asid` (read with
+`report.json` records `uid`, the GUI session's `asid` (read with
 `launchctl print gui/<uid>` on macOS), the host's `version`/`build`, the
 declared extension methods and the SHA-256 of every project fixture a test
-resolved. Those fields are `automated test` against the fake host today; they
-have not been observed on a real host.
+resolved. The 2026-11-17 consumer runs observed these on a real host:
+uid 501, asid 100021, After Effects 26.5.3x9 (build 9), transport
+`script-invocation`.
 
 Evidence (proof.json, report.json, traces, renders, a sha256 manifest) is kept
 outside the repository, in the project's evidence store
-(`_evidence/2026-10-15-ae-a8n-macos-real-host/`).
+(`_evidence/2026-10-15-ae-a8n-macos-real-host/`,
+`_evidence/2026-11-18-beta2-real-host/`).
 
 ### Not covered
 

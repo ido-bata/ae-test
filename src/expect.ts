@@ -96,7 +96,7 @@ export class Expectation<T> {
   }
 
   toBeDefined(): void {
-    if ((this.#actual === undefined) === this.#negated) {
+    if ((this.#actual !== undefined) === this.#negated) {
       this.#fail(`a defined value, received ${show(this.#actual)}`);
     }
   }
@@ -138,6 +138,7 @@ export class Expectation<T> {
 export class RenderedFrameExpectation {
   readonly #frame: RenderedFrame;
   readonly #snapshots: SnapshotStore;
+  #frameComparisons = 0;
 
   constructor(frame: RenderedFrame, snapshots: SnapshotStore) {
     this.#frame = frame;
@@ -176,25 +177,60 @@ export class RenderedFrameExpectation {
 
   /** Compares this frame's pixels against another rendered frame. */
   toMatchFrame(expected: RenderedFrame, options?: ImageComparisonOptions): Promise<void> {
+    return this.#compareFrames(expected, options, "match");
+  }
+
+  /**
+   * Asserts this frame's pixels differ from another rendered frame. The same
+   * tolerances apply, inverted: the frames must NOT match within `options`,
+   * so a no-op change cannot pass by producing a different file path.
+   */
+  toDifferFromFrame(expected: RenderedFrame, options?: ImageComparisonOptions): Promise<void> {
+    return this.#compareFrames(expected, options, "differ");
+  }
+
+  #compareFrames(
+    expected: RenderedFrame,
+    options: ImageComparisonOptions | undefined,
+    mode: "match" | "differ",
+  ): Promise<void> {
+    this.#frameComparisons += 1;
+    const name = `frame-${this.#frameComparisons}`;
+    const record = (outcome: ImageDifference | Error): string[] =>
+      this.#snapshots.recordImageFailure({
+        name,
+        expectedPath: expected.path,
+        actualPath: this.#frame.path,
+        outcome,
+        ...(options === undefined ? {} : { options }),
+      });
+
     let difference: ImageDifference;
     try {
       difference = comparePngFiles(expected.path, this.#frame.path, options);
     } catch (error) {
       const message = error instanceof ImageComparisonError ? error.message : String(error);
-      return Promise.reject(
-        new AssertionError(`could not compare rendered frames: ${message}`, this.#frame),
-      );
-    }
-    if (!difference.passed) {
+      const outcome = error instanceof Error ? error : new Error(message);
+      const diff = record(outcome);
       return Promise.reject(
         new AssertionError(
-          `rendered frame does not match the expected frame.\n` +
-            formatImageDifference(difference, options),
+          `could not compare rendered frames: ${message}\n${diff.join("\n")}`,
           this.#frame,
         ),
       );
     }
-    return Promise.resolve();
+
+    const failed = mode === "match" ? !difference.passed : difference.passed;
+    if (!failed) {
+      return Promise.resolve();
+    }
+    const diff = record(difference);
+    const detail = formatImageDifference(difference, options);
+    const message =
+      mode === "match"
+        ? `rendered frame does not match the expected frame.\n${detail}`
+        : `expected the rendered frames to differ, but they match within tolerance.\n${detail}`;
+    return Promise.reject(new AssertionError(`${message}\n${diff.join("\n")}`, this.#frame));
   }
 
   #digest(): string {

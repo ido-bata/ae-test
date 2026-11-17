@@ -110,6 +110,41 @@ describe("rendered frame image comparison", () => {
     ).rejects.toThrow(/different dimensions/);
   });
 
+  it("toDifferFromFrame rejects identical frames and resolves on real differences", async () => {
+    const expectedPath = writePng("expected.png");
+    const samePath = writePng("same.png");
+    const changedPath = writePng("changed.png", [25, 20, 30]);
+    const store = snapshots(false);
+
+    // The regression this guards: a no-op change must not pass just because
+    // the two renders landed at different paths.
+    await expect(
+      expectFrame(frame(samePath), store).toDifferFromFrame(frame(expectedPath)),
+    ).rejects.toThrow(/match within tolerance/);
+    await expectFrame(frame(changedPath), store).toDifferFromFrame(frame(expectedPath));
+    await expectFrame(frame(changedPath), store).toDifferFromFrame(frame(samePath));
+  });
+
+  it("toDifferFromFrame honours tolerances as inverted match budgets", async () => {
+    const expectedPath = writePng("expected.png");
+    // One pixel differs by 15 in the red channel.
+    const slightlyChangedPath = writePng("slightly-changed.png", [25, 20, 30]);
+    const store = snapshots(false);
+    const assertion = expectFrame(frame(slightlyChangedPath), store);
+
+    // Within the threshold the frames count as equal, so "differ" fails.
+    await expect(
+      assertion.toDifferFromFrame(frame(expectedPath), { threshold: 20 }),
+    ).rejects.toThrow(/match within tolerance/);
+    // Outside it they count as different, so "differ" passes.
+    await assertion.toDifferFromFrame(frame(expectedPath), { threshold: 10 });
+    // A differing-pixel budget above the actual count also reads as "same".
+    await expect(
+      assertion.toDifferFromFrame(frame(expectedPath), { maxDiffPixels: 4 }),
+    ).rejects.toThrow(/match within tolerance/);
+    await assertion.toDifferFromFrame(frame(expectedPath), { maxDiffPixels: 0 });
+  });
+
   it("counts alpha-channel differences", async () => {
     const expectedPath = writeRgbaPng("expected-alpha.png", () => [10, 20, 30, 255]);
     const actualPath = writeRgbaPng("actual-alpha.png", (x, y) =>

@@ -8,7 +8,7 @@
  * the fake host is doing the hosting.
  *
  * The extension API (`hostScript`, `extensionMethods()`, `call()`) arrives with
- * ae-a8n #61 and is in `0.1.0-alpha.2`, the published version this package
+ * ae-a8n #61 and is in `0.2.0`, the published version this package
  * pins (docs/dependency-on-ae-a8n.md). These cases are not skipped: the pin is
  * exact, so a version without the API would make this file fail, which is the
  * honest outcome for a dependency that lost something the suite uses. Before
