@@ -675,6 +675,17 @@ type GuardState = {
  * Symbol-keyed access other than `Symbol.asyncDispose` still reaches the
  * target: it is introspection (inspection, runtime internals), not host
  * work. `Symbol.asyncDispose` performs a real close, so it is revoked too.
+ *
+ * The check runs twice for a method: once when the property is read and
+ * again when the retrieved function is invoked. A body that held
+ * `const set = parameter.set` before the terminal state would otherwise
+ * keep a live dispatch path past revocation — reading a property is not
+ * the same event as calling it.
+ *
+ * Introspection traps (`getOwnPropertyDescriptor`, `getPrototypeOf`, …)
+ * are deliberately not guarded: they can surface raw members, but those
+ * members need the target's private fields as `this`, which only the
+ * proxy's traps can supply — a raw reference cannot dispatch.
  */
 function guardSession(
   session: AfterEffects,
@@ -702,8 +713,10 @@ function guardValue<T>(value: T, state: GuardState): T {
       const member: unknown = Reflect.get(target, property);
       if (typeof member === "function") {
         const callable = member as (this: unknown, ...args: unknown[]) => unknown;
-        return (...args: unknown[]) =>
-          guardCallResult(callable.apply(target, args), state);
+        return (...args: unknown[]) => {
+          assertContextInvocable(state);
+          return guardCallResult(callable.apply(target, args), state);
+        };
       }
       return guardValue(member, state);
     },
@@ -711,7 +724,24 @@ function guardValue<T>(value: T, state: GuardState): T {
       assertContextActive(property, state);
       return Reflect.set(target, property, member);
     },
+    defineProperty(target, property, descriptor) {
+      assertContextActive(property, state);
+      return Reflect.defineProperty(target, property, descriptor);
+    },
+    deleteProperty(target, property) {
+      assertContextActive(property, state);
+      return Reflect.deleteProperty(target, property);
+    },
+    setPrototypeOf(target, prototype) {
+      assertContextInvocable(state);
+      return Reflect.setPrototypeOf(target, prototype);
+    },
+    preventExtensions(target) {
+      assertContextInvocable(state);
+      return Reflect.preventExtensions(target);
+    },
     apply(target, thisArg, args) {
+      assertContextInvocable(state);
       return guardCallResult(
         Reflect.apply(
           target as unknown as (this: unknown, ...inner: unknown[]) => unknown,
@@ -720,6 +750,17 @@ function guardValue<T>(value: T, state: GuardState): T {
         ),
         state,
       );
+    },
+    construct(target, args, newTarget) {
+      assertContextInvocable(state);
+      return guardCallResult(
+        Reflect.construct(
+          target as unknown as new (...inner: unknown[]) => object,
+          args,
+          newTarget,
+        ),
+        state,
+      ) as object;
     },
   });
   state.seen.set(value, proxy);
@@ -750,6 +791,19 @@ function assertContextActive(property: string | symbol, state: GuardState): void
     return;
   }
   if (typeof property === "string" || property === Symbol.asyncDispose) {
+    throw new TestContextRevokedError();
+  }
+}
+
+/**
+ * The call-time half of the contract. A function retrieved before
+ * revocation — a method reference, a promise's `then`, a callable host
+ * object — reaches the host only through here, so invocation is refused
+ * outright once the context is dead. Unlike property reads, calling is
+ * never introspection, so no symbol carve-out applies.
+ */
+function assertContextInvocable(state: GuardState): void {
+  if (state.isRevoked()) {
     throw new TestContextRevokedError();
   }
 }

@@ -8,7 +8,7 @@
  * disk) are exactly the ones a real After Effects hang would exercise.
  */
 
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -31,11 +31,13 @@ function readReport(): ReportSnapshot {
 let resultsDir: string;
 let specsDir: string;
 let projectDir: string;
+let extraDirs: string[] = [];
 
 beforeEach(() => {
   resultsDir = mkdtempSync(join(tmpdir(), "ae-test-lifecycle-"));
   specsDir = mkdtempSync(join(tmpdir(), "ae-test-specs-"));
   projectDir = mkdtempSync(join(tmpdir(), "ae-test-projects-"));
+  extraDirs = [];
   writeFileSync(join(projectDir, "fixture.aep"), "placeholder");
   for (const key of [
     "__gate",
@@ -44,6 +46,7 @@ beforeEach(() => {
     "__late",
     "__late2",
     "__late3",
+    "__heldLate",
     "__release3",
     "__zombie3",
   ]) {
@@ -52,7 +55,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  for (const dir of [resultsDir, specsDir, projectDir]) {
+  for (const dir of [resultsDir, specsDir, projectDir, ...extraDirs]) {
     rmSync(dir, { recursive: true, force: true });
   }
 });
@@ -401,6 +404,115 @@ test("the next test observes the refusal", async () => {
     expect(first?.failure?.bodyStillRunning).toBeUndefined();
     expect(second).toMatchObject({ status: "passed" });
     expect((globalThis as { __late2?: string }).__late2).toBe("TestContextRevokedError");
+  });
+
+  it("refuses method references the body captured before the timeout", async () => {
+    const baselineDir = mkdtempSync(join(tmpdir(), "ae-test-baselines-"));
+    extraDirs.push(baselineDir);
+    const file = writeSpec(
+      "held-methods.spec.ts",
+      `
+test("captures methods, then outlives its budget", async ({ ae, fixture, expectFrame }) => {
+  const project = await ae.openProject(fixture.project("fixture.aep"));
+  const comp = await project.comp("Main");
+  const layer = await comp.layer("Solid 1");
+  const effect = await layer.effects.apply("ADBE Fake Gaussian Blur");
+  const parameter = effect.parameter("Amount");
+  const expectation = expectFrame(await comp.renderFrame(0));
+  // Held before the timeout: unbound method references, not proxy property
+  // reads at call time. Calling one after revocation must not dispatch.
+  const held = {
+    version: ae.version,
+    openProject: ae.openProject,
+    renderFrame: comp.renderFrame,
+    setParameter: parameter.set,
+    matchSnapshot: expectation.toMatchSnapshot,
+    projectPath: fixture.project("fixture.aep"),
+  };
+  // The same references still work while the context is live.
+  await held.version();
+  globalThis.__heldLate = {};
+  setTimeout(() => {
+    const late = globalThis.__heldLate;
+    const attempt = (name, fn) => {
+      try {
+        const result = fn();
+        if (result !== null && typeof result === "object" && typeof result.catch === "function") {
+          result.catch(() => {});
+        }
+        late[name] = "no-throw";
+      } catch (error) {
+        late[name] = error.name;
+      }
+    };
+    attempt("version", () => held.version());
+    attempt("openProject", () => held.openProject(held.projectPath));
+    attempt("renderFrame", () => held.renderFrame(9));
+    attempt("setParameter", () => held.setParameter(1));
+    attempt("matchSnapshot", () => held.matchSnapshot("held-baseline"));
+  }, 150);
+  await new Promise(() => {});
+});
+test("the observer checks the refusals and the evidence", async () => {
+  const late = globalThis.__heldLate;
+  for (const name of ["version", "openProject", "renderFrame", "setParameter", "matchSnapshot"]) {
+    expect(late[name]).toBe("TestContextRevokedError");
+  }
+});
+`,
+    );
+
+    const summary = await run(
+      options(file, {
+        baselineDir,
+        updateSnapshots: true,
+        drainTimeoutMs: 400,
+        timeoutMs: 100,
+      }),
+    );
+
+    const [first, second] = summary.results;
+    expect(first).toMatchObject({
+      status: "timed-out",
+      failure: { name: "TestTimeoutError", bodyStillRunning: true },
+      cleanup: { status: "ok", quit: true },
+    });
+    expect(second).toMatchObject({ status: "passed" });
+
+    // No post-revoke call reached the host: the trace holds exactly the
+    // operations the live body dispatched — one project open, one render,
+    // and no parameter write at all.
+    const tracePath = join(
+      resultsDir,
+      first!.id.replace(/[^a-zA-Z0-9._-]+/g, "-"),
+      "trace.jsonl",
+    );
+    const ops = readFileSync(tracePath, "utf-8")
+      .split("\n")
+      .filter((line) => line.length > 0)
+      .map((line) => (JSON.parse(line) as { op: string }).op);
+    expect(ops.filter((op) => op === "project.open")).toHaveLength(1);
+    expect(ops.filter((op) => op === "comp.renderFrame")).toHaveLength(1);
+    expect(ops.filter((op) => op === "effect.setParameter")).toHaveLength(0);
+
+    // The held snapshot matcher wrote no baseline.
+    const baselineFiles: string[] = [];
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const path = join(dir, entry.name);
+        if (entry.isDirectory()) {
+          walk(path);
+        } else {
+          baselineFiles.push(path);
+        }
+      }
+    };
+    try {
+      walk(baselineDir);
+    } catch {
+      // No baseline directory at all is also a pass.
+    }
+    expect(baselineFiles.filter((path) => path.includes("held-baseline"))).toHaveLength(0);
   });
 
   it("revokes handles a passing body left behind in detached work", async () => {
