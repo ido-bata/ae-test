@@ -32,11 +32,14 @@ Depends on `@ido-bata/ae-a8n` `0.1.0-alpha.2` exactly.
   given refuse further use with `TestContextRevokedError`. That covers
   `context.ae` and every object reachable from it (`Project`, `Comp`,
   `Layer`, `Effect`, `Parameter`, …), `fixture.project`/`attach`, and
-  `expectFrame` including expectations already obtained. A body that
-  outlives its budget can no longer dispatch new host operations, write
-  unlisted artifacts, or touch snapshot baselines, and the next test
-  proceeds once teardown succeeds. In-flight operations and detached
-  asynchronous work remain outside the guarantee; the boundary is
+  `expectFrame` including expectations already obtained. Revocation is
+  checked again at call time, so a method reference captured before the
+  terminal state (`const set = parameter.set`) is refused just like a
+  property read after it. A body that outlives its budget can no longer
+  dispatch new host operations, write unlisted artifacts, or touch
+  snapshot baselines, and the next test proceeds once teardown succeeds.
+  In-flight operations and detached asynchronous work remain outside the
+  guarantee; the boundary is
   documented in `docs/api.md`. `TestContextRevokedError` is a new public
   export (minor).
 
