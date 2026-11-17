@@ -1,4 +1,4 @@
-import { test, expect } from "@ido-bata/ae-test";
+import { test } from "@ido-bata/ae-test";
 
 // Real-After-Effects smoke spec. Not part of the fake-host suite: run it with
 //   ae-test --config ae-test.real.config.json
