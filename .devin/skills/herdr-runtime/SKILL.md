@@ -11,6 +11,8 @@ Herdrはproject-initのlogical Worker / Supervisor modelを実装するoptional 
 
 Herdr固有のworkspace / pane / agent stateをorganizational truthへ昇格させない。canonical semanticsは `organization/execution-roles.md`、ADR-0019、`parallel-orchestration`、`agent-recovery` に従う。
 
+Supervisor actorがOpenClaw Gateway上のbotの場合も同じである。OpenClawはSupervisorのlifecycle/schedulingを提供するruntime adapterにすぎず、Worker attemptのmaterialize・監督・収集はこのSkillと`agent` launcherの経路を使う。OpenClawのautomation/session/会話履歴をdurable task identityやevidenceの代替にしない。
+
 ## When to use
 
 Herdrは次の場合に有効:
