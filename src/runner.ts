@@ -23,7 +23,7 @@ import {
   type ConformanceRunOptions,
 } from "./conformance.js";
 import { HostNotOwnedError, TestFixture, type FixtureOptions } from "./fixture.js";
-import { DEFAULT_TIMEOUT_MS, clearRegistry, setDeclaringFile } from "./registry.js";
+import { DEFAULT_TIMEOUT_MS, clearRegistry, projectRelative, setDeclaringFile } from "./registry.js";
 import { SnapshotStore } from "./snapshot.js";
 import type {
   Artifact,
@@ -83,6 +83,24 @@ export type RunOptions = {
   readonly hostEnvironment?: Readonly<Record<string, string>>;
   /** Called after each test, for progress output. */
   readonly onResult?: (result: TestResult) => void;
+  /**
+   * Aborts the run: the in-flight test is interrupted (its body is not
+   * cancelled — After Effects does not take one — but the runner stops
+   * waiting, tears the session down within budget, and blocks the rest).
+   * The CLI wires this to SIGINT/SIGTERM.
+   */
+  readonly signal?: AbortSignal;
+  /**
+   * How long teardown may wait for `session.close()` before the cleanup
+   * is reported as timed out. Defaults to the per-operation timeout plus
+   * a margin, so a legitimately slow quit is never cut short.
+   */
+  readonly teardownTimeoutMs?: number;
+  /**
+   * How long a timed-out or interrupted body is given to settle before
+   * teardown begins. Defaults to 5000.
+   */
+  readonly drainTimeoutMs?: number;
   /** Write ae-devtools-schema conformance evidence for this run. */
   readonly conformance?: ConformanceRunOptions;
 };
@@ -138,6 +156,41 @@ class TestTimeoutError extends Error {
   }
 }
 
+/** The run was asked to stop (SIGINT/SIGTERM, or an aborted signal) mid-test. */
+class RunInterruptedError extends Error {
+  constructor(phase: "launch" | "body" | "") {
+    super(
+      phase === ""
+        ? "the run was interrupted"
+        : `the run was interrupted during ${phase === "launch" ? "session launch" : "the test body"}`,
+    );
+    this.name = "RunInterruptedError";
+  }
+}
+
+/**
+ * How long a timed-out or interrupted body is given to settle before
+ * teardown begins. The wait exists so operations already in flight can
+ * land in the trace and so a body that was about to finish does not race
+ * its own session's close; it is deliberately short — the budget is
+ * already spent, and teardown must not be held hostage by a body that
+ * will never settle.
+ */
+const DEFAULT_DRAIN_TIMEOUT_MS = 5_000;
+
+/**
+ * Slack added to the per-operation timeout when no explicit teardown
+ * budget is configured: ae-a8n bounds a quit by the same per-operation
+ * timeout the session launched with, so the wait has to outlast that
+ * bound before it can mean "the close itself is stuck".
+ */
+const TEARDOWN_MARGIN_MS = 30_000;
+const MIN_TEARDOWN_TIMEOUT_MS = 30_000;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolvePromise) => setTimeout(resolvePromise, ms));
+}
+
 let loadGeneration = 0;
 
 /**
@@ -157,11 +210,72 @@ export async function loadTestFiles(files: readonly string[]): Promise<void> {
   }
 }
 
+type SpecLoadError = {
+  readonly file: string;
+  readonly error: unknown;
+};
+
+/**
+ * Imports each spec file, collecting per-file failures instead of throwing.
+ *
+ * `run()` uses this so one broken spec cannot take the whole suite's
+ * evidence down with it; the exported `loadTestFiles` keeps its
+ * fail-fast contract for programmatic callers. An aborted signal stops
+ * the remaining imports — there is nothing left to run them for.
+ */
+async function loadSpecsIsolated(
+  files: readonly string[],
+  signal: AbortSignal | undefined,
+): Promise<SpecLoadError[]> {
+  loadGeneration += 1;
+  const errors: SpecLoadError[] = [];
+  for (const file of files) {
+    if (signal?.aborted === true) {
+      break;
+    }
+    const absolute = resolve(file);
+    setDeclaringFile(absolute);
+    try {
+      await import(`${pathToFileURL(absolute).href}?run=${loadGeneration}`);
+    } catch (error) {
+      errors.push({ file: absolute, error });
+    }
+  }
+  return errors;
+}
+
+/** A spec that never registered a test still gets a result in the report. */
+function specLoadResult({ file, error }: SpecLoadError, index: number): TestResult {
+  const relative = projectRelative(file);
+  const slug = relative
+    .replace(/[^a-zA-Z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .toLowerCase();
+  return {
+    id: `${slug}#load-${index}`,
+    title: relative,
+    file: relative,
+    status: "failed",
+    durationMs: 0,
+    artifacts: [],
+    capabilities: [],
+    failure: {
+      name: error instanceof Error ? error.name : typeof error,
+      message:
+        `spec file failed to load: ${error instanceof Error ? error.message : String(error)}`,
+      ...(error instanceof Error && error.stack !== undefined ? { stack: error.stack } : {}),
+      lastOperations: [],
+      phase: "load",
+    },
+  };
+}
+
 export async function run(options: RunOptions): Promise<RunSummary> {
   const { registeredTests } = await import("./registry.js");
   const began = Date.now();
 
   const resultsDir = resolve(options.resultsDir ?? DEFAULT_RESULTS_DIR);
+  const reportPath = join(resultsDir, "report.json");
   // Pre-0.2 baselines lived inside the results directory. They are still read
   // as a fallback so an existing suite keeps working until its baselines are
   // re-recorded or moved; nothing is written there any more.
@@ -179,7 +293,10 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   // the same process would see the first run's registrations plus its own and
   // report duplicates.
   clearRegistry();
-  await loadTestFiles(options.files);
+  // A spec that fails to import is that file's failure, not the whole run's:
+  // the remaining files still load and execute, and the report keeps the
+  // load error next to the results it did produce.
+  const loadErrors = await loadSpecsIsolated(options.files, options.signal);
 
   const capabilityFilter = options.capabilityFilter;
   const declared = registeredTests().filter(
@@ -189,7 +306,36 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         candidate.capabilities.some((id) => capabilityFilter.includes(id))),
   );
 
+  // report.json is rewritten after every result, so a crash mid-run still
+  // leaves the evidence collected so far. `partial` marks those snapshots;
+  // the final write below drops it.
   const results: TestResult[] = [];
+  const persistReport = (): void => {
+    writeFileSync(
+      reportPath,
+      `${JSON.stringify(
+        {
+          schema: "ae-test.report/v1",
+          results,
+          durationMs: Date.now() - began,
+          resultsDir,
+          reportPath,
+          partial: true,
+          ...(declared.length === 0 ? { noTestsSelected: true } : {}),
+        } satisfies RunSummary,
+        null,
+        2,
+      )}\n`,
+      "utf-8",
+    );
+  };
+  for (const [index, loadError] of loadErrors.entries()) {
+    const failed = specLoadResult(loadError, index);
+    results.push(failed);
+    persistReport();
+    options.onResult?.(failed);
+  }
+  persistReport();
   // Set once a test leaves After Effects in a state nobody can vouch for: a
   // teardown that failed, a launch that failed, an AE this run does not own.
   // Every later test is then reported as blocked instead of being run against
@@ -209,10 +355,15 @@ export async function run(options: RunOptions): Promise<RunSummary> {
             arch: process.arch,
           });
     const blockReason =
-      environmentBlock ?? (hostUnknown !== undefined && !declaration.skip ? hostUnknown : undefined);
+      environmentBlock ??
+      (hostUnknown !== undefined && !declaration.skip ? hostUnknown : undefined) ??
+      (options.signal?.aborted === true && !declaration.skip
+        ? "the run was interrupted before this test started"
+        : undefined);
     if (blockReason !== undefined) {
       const blocked = blockedResult(declaration, blockReason);
       results.push(blocked);
+      persistReport();
       options.onResult?.(blocked);
       continue;
     }
@@ -221,8 +372,11 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       baselineRoot,
       legacySnapshotsDir,
       updateSnapshots: options.updateSnapshots ?? false,
+      signal: options.signal,
+      teardownTimeoutMs: options.teardownTimeoutMs,
+      drainTimeoutMs: options.drainTimeoutMs,
+      timeoutMs: options.timeoutMs,
       ...(options.projectsDir === undefined ? {} : { projectsDir: options.projectsDir }),
-      ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
       ...(options.transport === undefined ? {} : { transport: options.transport }),
       ...(options.hostScript === undefined ? {} : { hostScript: options.hostScript }),
       ...(options.installDir === undefined ? {} : { installDir: options.installDir }),
@@ -231,15 +385,17 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         : { hostEnvironment: options.hostEnvironment }),
     });
     results.push(result);
+    persistReport();
     options.onResult?.(result);
     if (result.cleanup?.status === "failed") {
       hostUnknown = `"${result.title}" did not clean up: ${result.cleanup.name}: ${result.cleanup.message}`;
-    } else if (result.failure?.phase === "launch") {
+    } else if (result.failure?.phase === "launch" && result.status !== "interrupted") {
+      // An interrupted launch is not evidence the host is untrustworthy:
+      // the session that did arrive was torn down normally.
       hostUnknown = `"${result.title}" could not start a session: ${result.failure.name}: ${result.failure.message}`;
     }
   }
 
-  const reportPath = join(resultsDir, "report.json");
   const baseSummary: RunSummary = {
     schema: "ae-test.report/v1",
     results,
@@ -286,7 +442,11 @@ type OneTestOptions = {
   legacySnapshotsDir: string;
   projectsDir?: string;
   /** Run-level default budget; a test may override it. */
-  timeoutMs?: number;
+  timeoutMs?: number | undefined;
+  /** Aborts the in-flight wait; the session is still torn down. */
+  signal?: AbortSignal | undefined;
+  teardownTimeoutMs?: number | undefined;
+  drainTimeoutMs?: number | undefined;
   transport?: HostTransport;
   hostScript?: string;
   installDir?: string;
@@ -345,9 +505,16 @@ async function runOne(
   let sessionFacts: SessionFacts | undefined;
   let snapshots: SnapshotStore | undefined;
   let launched = false;
+  let bodyStarted = false;
+  let bodySettled = true;
 
   try {
-    session = await fixture.session();
+    // An abort that landed between the scheduler's check and here must not
+    // pay for a launch it will only tear down.
+    if (options.signal?.aborted === true) {
+      throw new RunInterruptedError("");
+    }
+    session = await launchSession(fixture, options.signal);
     launched = true;
     // The baseline directory is environment-scoped, and the environment is
     // only fully known once the session is up: the transport kind up front,
@@ -368,16 +535,49 @@ async function runOne(
       expect,
     };
     // A test's own budget wins; otherwise the run's; otherwise the default.
+    // The budget covers the test body only: launch and teardown have their
+    // own bounds (ae-a8n's transport timeouts, teardownTimeoutMs).
     const budgetMs = declaration.timeoutMs ?? options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-    const body = withTimeout(
-      declaration.fn(context),
-      budgetMs,
-      new TestTimeoutError(declaration.title, budgetMs),
-    );
-    await body;
+    bodyStarted = true;
+    bodySettled = false;
+    const body = Promise.resolve()
+      .then(() => declaration.fn(context))
+      .then(
+        (value) => {
+          bodySettled = true;
+          return value;
+        },
+        (error: unknown) => {
+          bodySettled = true;
+          throw error;
+        },
+      );
+    await withBudget(body, budgetMs, declaration.title, options.signal);
   } catch (error) {
-    status = error instanceof TestTimeoutError ? "timed-out" : "failed";
+    status =
+      error instanceof TestTimeoutError
+        ? "timed-out"
+        : error instanceof RunInterruptedError
+          ? "interrupted"
+          : "failed";
     failure = { ...describeFailure(error, session), phase: launched ? "body" : "launch" };
+    // A body that outlived its budget keeps running — it cannot be
+    // cancelled — so give it a bounded moment to settle before teardown
+    // races its last operations, and record it when it does not.
+    if (
+      bodyStarted &&
+      !bodySettled &&
+      (error instanceof TestTimeoutError || error instanceof RunInterruptedError)
+    ) {
+      const drainMs = options.drainTimeoutMs ?? DEFAULT_DRAIN_TIMEOUT_MS;
+      const deadline = Date.now() + drainMs;
+      while (!bodySettled && Date.now() < deadline) {
+        await delay(Math.min(50, Math.max(deadline - Date.now(), 1)));
+      }
+      if (!bodySettled) {
+        failure = { ...failure, bodyStillRunning: true };
+      }
+    }
   } finally {
     artifacts = [
       ...fixture.collectArtifacts(session),
@@ -388,7 +588,7 @@ async function runOne(
     // with it. Every read inside is guarded, so a fact nobody can measure is
     // recorded as absent rather than replacing the test's own result.
     sessionFacts = fixture.sessionFacts(session);
-    cleanup = await fixture.teardown();
+    cleanup = await boundedTeardown(fixture, options);
   }
 
   // A body that passed does not make the test pass if the session could not
@@ -424,24 +624,87 @@ async function runOne(
 }
 
 /**
- * Fails a test that outlives its budget.
+ * Waits for the session launch, unless the run is interrupted first.
  *
- * The underlying operation is not cancelled — After Effects does not take a
- * cancel — but the runner stops waiting and proceeds to teardown, so one slow
- * test cannot stall a whole run.
+ * A launch cannot be cancelled either, so an abort does not drop it: the
+ * launch is still awaited to settlement — ae-a8n bounds it with its own
+ * transport timeouts — because a session that arrives after the runner
+ * stopped looking would be an After Effects nobody owns or closes. Once it
+ * settles, the interrupted error propagates and the normal teardown path
+ * closes whatever launched.
  */
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number, onTimeout: Error): Promise<T> {
+async function launchSession(
+  fixture: TestFixture,
+  signal: AbortSignal | undefined,
+): Promise<AfterEffects> {
+  const launching = fixture.session();
+  if (signal === undefined) {
+    return launching;
+  }
+  let onAbort: () => void = () => {};
+  const interrupted = new Promise<never>((_, rejectPromise) => {
+    onAbort = () => rejectPromise(new RunInterruptedError("launch"));
+    if (signal.aborted) {
+      onAbort();
+    } else {
+      signal.addEventListener("abort", onAbort, { once: true });
+    }
+  });
+  try {
+    return await Promise.race([launching, interrupted]);
+  } catch (error) {
+    if (!(error instanceof RunInterruptedError)) {
+      throw error;
+    }
+    // The launch is still in flight; wait for it so the session it
+    // produces is owned by the fixture and reaches teardown. A launch
+    // that fails meanwhile reports its own error instead — that is the
+    // more actionable fact.
+    await launching;
+    throw error;
+  } finally {
+    signal.removeEventListener("abort", onAbort);
+  }
+}
+
+/**
+ * Races the test body against its budget and the run's abort signal.
+ *
+ * Neither the body nor a launch can be cancelled — After Effects does not
+ * take one — so losing the race only stops the runner *waiting*. What
+ * happens next is the caller's job: a bounded drain, then teardown.
+ */
+function withBudget<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  title: string,
+  signal: AbortSignal | undefined,
+): Promise<T> {
   return new Promise<T>((resolvePromise, rejectPromise) => {
     const timer = setTimeout(() => {
-      rejectPromise(onTimeout instanceof Error ? onTimeout : new Error(String(onTimeout)));
+      cleanup();
+      rejectPromise(new TestTimeoutError(title, timeoutMs));
     }, timeoutMs);
+    const onAbort = (): void => {
+      cleanup();
+      rejectPromise(new RunInterruptedError("body"));
+    };
+    const cleanup = (): void => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+    if (signal?.aborted === true) {
+      onAbort();
+      return;
+    }
     promise.then(
       (value) => {
-        clearTimeout(timer);
+        cleanup();
         resolvePromise(value);
       },
       (error: unknown) => {
-        clearTimeout(timer);
+        cleanup();
         // A test body can reject with anything; normalise so the runner's
         // failure description has a consistent shape.
         rejectPromise(
@@ -450,6 +713,48 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, onTimeout: Error
       },
     );
   });
+}
+
+/**
+ * Closes the session within a budget. A close that never answers is
+ * reported as a failed cleanup — the run must not stall forever waiting
+ * for it, and the report must not claim a quit that was not observed.
+ * The underlying close is left running; it may still succeed later.
+ */
+async function boundedTeardown(
+  fixture: TestFixture,
+  options: OneTestOptions,
+): Promise<CleanupOutcome | undefined> {
+  const teardownMs =
+    options.teardownTimeoutMs ??
+    Math.max(
+      (options.timeoutMs ?? DEFAULT_TIMEOUT_MS) + TEARDOWN_MARGIN_MS,
+      MIN_TEARDOWN_TIMEOUT_MS,
+    );
+  const teardown = fixture.teardown();
+  let timer: NodeJS.Timeout | undefined;
+  const expired = new Promise<CleanupOutcome>((resolvePromise) => {
+    timer = setTimeout(
+      () =>
+        resolvePromise({
+          status: "failed",
+          name: "TeardownTimeoutError",
+          message: `session teardown did not complete within ${teardownMs}ms`,
+        }),
+      teardownMs,
+    );
+  });
+  try {
+    return await Promise.race([teardown, expired]);
+  } finally {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
+    // teardown() resolves to an outcome and never rejects, but if the
+    // race already lost, keep a handler attached so a late rejection can
+    // never surface as unhandled.
+    void teardown.catch(() => {});
+  }
 }
 
 function describeFailure(error: unknown, session: AfterEffects | undefined): TestFailure {
@@ -491,6 +796,7 @@ export function countByStatus(results: readonly TestResult[]): Record<TestStatus
     passed: 0,
     failed: 0,
     "timed-out": 0,
+    interrupted: 0,
     skipped: 0,
     blocked: 0,
   };
@@ -503,6 +809,10 @@ export function countByStatus(results: readonly TestResult[]): Record<TestStatus
 /** Anything that is not a pass or a deliberate skip makes the run red. */
 export function hasFailures(results: readonly TestResult[]): boolean {
   return results.some(
-    (result) => result.status === "failed" || result.status === "timed-out" || result.status === "blocked",
+    (result) =>
+      result.status === "failed" ||
+      result.status === "timed-out" ||
+      result.status === "interrupted" ||
+      result.status === "blocked",
   );
 }

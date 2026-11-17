@@ -1,5 +1,34 @@
 # Changelog
 
+## Unreleased
+
+Depends on `@ido-bata/ae-a8n` `0.1.0-alpha.2` exactly.
+
+### Added
+
+- Runner lifecycle safety (#43): `RunOptions.signal` interrupts a run —
+  the in-flight test reports `interrupted`, unstarted tests report
+  `blocked`, sessions still get a bounded teardown, and the CLI exits 130
+  on SIGINT/SIGTERM (a second signal exits immediately). `teardownTimeoutMs`
+  bounds `session.close()`; a close that never answers is reported as
+  `TeardownTimeoutError` instead of stalling the run. `drainTimeoutMs`
+  bounds how long a timed-out or interrupted body is given to settle
+  before teardown; a body still running at that point is recorded as
+  `failure.bodyStillRunning`. `report.json` is rewritten after every
+  result with `partial: true`, so a crash leaves the evidence collected
+  so far. A spec file that fails to import is now its own `failed` result
+  (`failure.phase: "load"`) instead of aborting the whole run.
+- `TestStatus` gains `"interrupted"`; `TestFailure.phase` gains `"load"`;
+  `RunSummary` gains optional `partial`. All additive under
+  `ae-test.report/v1`.
+
+### Changed
+
+- `timeoutMs` semantics are now explicit: the budget covers the test body
+  only. Session launch and teardown have their own bounds and are
+  documented as such in `docs/api.md`, the CLI usage text and the
+  `TestOptions` comment.
+
 ## 0.2.0-beta.1
 
 Depends on `@ido-bata/ae-a8n` `0.1.0-alpha.2` exactly. First beta: breaking
