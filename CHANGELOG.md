@@ -29,13 +29,16 @@ Depends on `@ido-bata/ae-a8n` `0.1.0-alpha.2` exactly.
   module resolution.
 - Test context revocation (#50): once a test reaches its terminal state —
   body settled, timed out, failed, or interrupted — the handles it was
-  given (`context.ae`, `fixture.project`/`attach`, `expectFrame`) refuse
-  further use with `TestContextRevokedError`. A body that outlives its
-  budget can no longer dispatch new host operations, write unlisted
-  artifacts, or touch snapshot baselines, and the next test proceeds once
-  teardown succeeds. In-flight operations and detached asynchronous work
-  remain outside the guarantee; the boundary is documented in
-  `docs/api.md`. `TestContextRevokedError` is a new public export (minor).
+  given refuse further use with `TestContextRevokedError`. That covers
+  `context.ae` and every object reachable from it (`Project`, `Comp`,
+  `Layer`, `Effect`, `Parameter`, …), `fixture.project`/`attach`, and
+  `expectFrame` including expectations already obtained. A body that
+  outlives its budget can no longer dispatch new host operations, write
+  unlisted artifacts, or touch snapshot baselines, and the next test
+  proceeds once teardown succeeds. In-flight operations and detached
+  asynchronous work remain outside the guarantee; the boundary is
+  documented in `docs/api.md`. `TestContextRevokedError` is a new public
+  export (minor).
 
 ### Changed
 

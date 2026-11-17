@@ -37,7 +37,18 @@ beforeEach(() => {
   specsDir = mkdtempSync(join(tmpdir(), "ae-test-specs-"));
   projectDir = mkdtempSync(join(tmpdir(), "ae-test-projects-"));
   writeFileSync(join(projectDir, "fixture.aep"), "placeholder");
-  delete (globalThis as { __gate?: Promise<void> }).__gate;
+  for (const key of [
+    "__gate",
+    "__gate2",
+    "__gate3",
+    "__late",
+    "__late2",
+    "__late3",
+    "__release3",
+    "__zombie3",
+  ]) {
+    delete (globalThis as Record<string, unknown>)[key];
+  }
 });
 
 afterEach(() => {
@@ -283,7 +294,19 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 
 test("times out with work left behind", async ({ ae, fixture, expectFrame, testInfo }) => {
+  const project = await ae.openProject(fixture.project("fixture.aep"));
+  const comp = await project.comp("Main");
+  const layer = await comp.layer("Solid 1");
+  const effect = await layer.effects.apply("ADBE Fake Gaussian Blur");
+  const parameter = effect.parameter("Amount");
+  const expectation = expectFrame(await comp.renderFrame(0));
   const late = (globalThis.__late ??= {});
+  // Handles derived before the timeout: a zombie holding any of these must
+  // hit the same revoked boundary as the context entry points.
+  late.project = project;
+  late.comp = comp;
+  late.parameter = parameter;
+  late.expectation = expectation;
   setTimeout(() => {
     const attempt = (name, fn) => {
       try { fn(); late[name] = "no-throw"; }
@@ -291,8 +314,12 @@ test("times out with work left behind", async ({ ae, fixture, expectFrame, testI
     };
     attempt("ae", () => ae.version());
     attempt("attach", () => fixture.attach("late.txt", "late"));
-    attempt("project", () => fixture.project("fixture.aep"));
-    attempt("expectFrame", () => expectFrame({}));
+    attempt("fixtureProject", () => fixture.project("fixture.aep"));
+    attempt("project", () => late.project.comp("Main"));
+    attempt("comp", () => late.comp.renderFrame(1));
+    attempt("parameter", () => late.parameter.set(1));
+    attempt("expectFrameCall", () => expectFrame({}));
+    attempt("expectation", () => late.expectation.toMatchSnapshot("late"));
     attempt("expect", () => expect(1).toBe(1));
     late.attachPath = join(testInfo.outputDir, "late.txt");
   }, 150);
@@ -302,8 +329,12 @@ test("the next test runs clean", async () => {
   const late = globalThis.__late;
   expect(late.ae).toBe("TestContextRevokedError");
   expect(late.attach).toBe("TestContextRevokedError");
+  expect(late.fixtureProject).toBe("TestContextRevokedError");
   expect(late.project).toBe("TestContextRevokedError");
-  expect(late.expectFrame).toBe("TestContextRevokedError");
+  expect(late.comp).toBe("TestContextRevokedError");
+  expect(late.parameter).toBe("TestContextRevokedError");
+  expect(late.expectFrameCall).toBe("TestContextRevokedError");
+  expect(late.expectation).toBe("TestContextRevokedError");
   // expect is a pure assertion helper, not a handle on test state: it still works.
   expect(late.expect).toBe("no-throw");
   expect(existsSync(late.attachPath)).toBe(false);
