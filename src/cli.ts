@@ -296,6 +296,20 @@ async function main(): Promise<number> {
     );
     return 2;
   }
+
+  // TypeScript specs need a Node that strips types itself (Node 22.18+ /
+  // 24+). Without it the import fails deep inside the runner with a
+  // module-resolution error that does not name the real problem.
+  const typeStripping = (process.features as { typescript?: unknown }).typescript;
+  const tsSpecs = specFiles.filter((file) => /\.[cm]?tsx?$/.test(file));
+  if (tsSpecs.length > 0 && typeof typeStripping !== "string") {
+    process.stderr.write(
+      `${tsSpecs.length} TypeScript spec file(s) selected, but this Node (${process.version}) ` +
+        `cannot strip types. Use Node 22.18+ or 24+, rename the specs to .mjs/.js, ` +
+        `or compile them first.\n`,
+    );
+    return 2;
+  }
   if (
     options.conformance !== true &&
     (options.capabilityCatalog !== undefined ||

@@ -69,16 +69,21 @@ npm install --save-dev @ido-bata/ae-test@next
 
 `@ido-bata/ae-a8n` comes with it, pinned to exactly `0.1.0-alpha.2`.
 
-Requirements: Node 22 or later (24 to write specs in TypeScript, see below).
-For a real host, additionally: macOS, After Effects installed in the default
+Requirements: Node 22 or later. TypeScript specs need a Node that strips
+types itself — 22.18+ or 24+ (the CLI exits 2 with a clear message on older
+22.x); `.mjs`/`.js` specs run on any supported Node. For a real host,
+additionally: macOS, After Effects installed in the default
 location, **Settings → Scripting & Expressions → Allow Scripts to Write Files
 and Access Network** on, and **After Effects not running** when the suite
 starts.
 
+A copyable starting project — config, one fake-host spec, a real-host
+variant guide — is in [`examples/consumer/`](examples/consumer/README.md).
+
 ## Writing tests
 
 A spec is an ES module that calls `test()`; the CLI imports it. Specs can be
-`.mjs`/`.js`, or `.ts` on a Node that strips types (Node 24 does).
+`.mjs`/`.js`, or `.ts` on a Node that strips types (22.18+ or 24).
 
 ```js
 import { test, skip } from "@ido-bata/ae-test";
