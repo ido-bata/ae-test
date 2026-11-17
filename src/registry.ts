@@ -27,7 +27,11 @@ export function projectRelative(file: string): string {
 }
 
 export type TestOptions = {
-  /** Millisecond budget for the whole test, including After Effects work. */
+  /**
+   * Millisecond budget for the test body — the fixture's After Effects
+   * work. Session launch and teardown have their own bounds and are not
+   * covered by this value.
+   */
   readonly timeoutMs?: number;
   readonly skip?: boolean;
   /** Capability IDs this test is conformance evidence for. */

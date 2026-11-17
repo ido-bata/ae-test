@@ -32,7 +32,7 @@ export の追加は minor、削除・改名・意味変更は breaking。型の�
 
 | 名前 | 役割 |
 | --- | --- |
-| `run(options)` | `RunOptions` で suite を実行し `RunSummary` を返す |
+| `run(options)` | `RunOptions` で suite を実行し `RunSummary` を返す。`signal` で中断、`teardownTimeoutMs` / `drainTimeoutMs` で teardown・drain の上限を調整できる |
 | `loadTestFiles(files)` | spec を import して registry へ登録 |
 | `registeredTests`, `clearRegistry`, `setDeclaringFile` | registry 操作（通常は CLI 経由で不要） |
 | `countByStatus`, `hasFailures`, `exitCodeFor` | 結果集計・exit code 判定 |
@@ -64,11 +64,20 @@ breaking change として扱う。
 | --- | --- |
 | `ae-test.config.json` | `AeTestConfig` の JSON。未知 key・型不一致は exit 2 |
 | baseline tree | `<baselineDir>/<environment>/<test id>--<name>.{sha256,png}`。environment key は transport kind +（fake 以外の transport では）OS/arch、さらに host が version を報告した時だけ AE version/build を含み、`[^a-zA-Z0-9._-]` は `-` に潰される。旧 `<resultsDir>/__snapshots__/` は read-only fallback |
-| `report.json` | `ae-test.report/v1`。`RunSummary` の JSON serialization |
+| `report.json` | `ae-test.report/v1`。`RunSummary` の JSON serialization。run 中は各 result ごとに `partial: true` 付きで逐次更新され、最終 write で `partial` が外れる。crash 時に残るのは最後の partial snapshot |
 | `conformance.json` | `ae-test.conformance/v1`（`--conformance` 時のみ） |
 | `<test id>/diffs/*.diff.json` | `ae-test.image-diff/v1`。失敗した画像比較の診断 |
 | artifact `kind` | `"render" | "trace" | "attachment" | "diff"` |
-| CLI exit code | `0` 全 pass/skip、`1` 失敗・timeout・blocked・非 OK conformance・選択 0 件、`2` setup 失敗（発見 0 件・不正 flag/config・起動前 error） |
+| CLI exit code | `0` 全 pass/skip、`1` 失敗・timeout・interrupted・blocked・非 OK conformance・選択 0 件、`2` setup 失敗（発見 0 件・不正 flag/config・起動前 error）、`130` SIGINT/SIGTERM による中断 |
+
+## 実行中の時間制限と中断
+
+- `timeoutMs`（CLI `--timeout` / config / `test()` option）が縛るのは **test body のみ**。session launch と teardown は別の bound を持つ（launch は ae-a8n の transport timeout、teardown は `teardownTimeoutMs`）。
+- timeout または中断で body の待機を打ち切っても、body の promise は cancel できない。runner は `drainTimeoutMs`（既定 5000）だけ settle を待ち、それでも未完了なら `failure.bodyStillRunning: true` を記録して teardown へ進む。未完了の操作を再送したり、所有権不明の host を操作したり、session を次テストへ再利用したりはしない。
+- `teardownTimeoutMs` を超えて `session.close()` が応答しない場合、cleanup は `TeardownTimeoutError` として failed になり、後続テストは blocked になる。quit が観測できなかった以上、報告は quit を主張しない。
+- `RunOptions.signal`（CLI では SIGINT/SIGTERM）が abort されると、in-flight の test は `interrupted`、未着手の test は `blocked`（理由: run interrupted）になる。launch 中の abort でも launch の決着を待ってから teardown するため、所有者不明の AE は残らない。CLI は中断時に exit 130 を返す。
+- spec file の import/登録失敗はその file の `failed` result（`failure.phase: "load"`）になり、他の file の実行は続く。
+- `TestResult.status` の `"interrupted"` と `TestFailure.phase` の `"load"` は 0.2.0-beta.2 で追加された。`"blocked"` は host 状態不明に加えて run 中断による未実行も含む。
 
 ## Host provenance と証拠分類
 

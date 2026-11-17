@@ -137,7 +137,12 @@ import type {
   TestOptions, TestResult, TestStatus,
 } from "@ido-bata/ae-test";
 
-const options: RunOptions = { files: ["spec.mjs"] };
+const options: RunOptions = {
+  files: ["spec.mjs"],
+  signal: undefined,
+  teardownTimeoutMs: 30_000,
+  drainTimeoutMs: 5_000,
+};
 const config: AeTestConfig = { host: "fake", specs: ["specs/**/*.spec.mjs"] };
 const loaded: LoadedConfig | undefined = undefined;
 void AE_TEST_VERSION;

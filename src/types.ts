@@ -11,10 +11,19 @@ import type { AsyncExpectation, Expectation, RenderedFrameExpectation } from "./
 
 /**
  * "blocked": the test was not run, because an earlier test left After
- * Effects in a state nobody can vouch for. Not a pass, and not a failure of
- * this test's own code.
+ * Effects in a state nobody can vouch for, or the run was interrupted
+ * first. Not a pass, and not a failure of this test's own code.
+ * "interrupted": the run was interrupted (SIGINT/SIGTERM or an aborted
+ * signal) while this test was in flight; it is neither a pass nor the
+ * test's own failure.
  */
-export type TestStatus = "passed" | "failed" | "timed-out" | "skipped" | "blocked";
+export type TestStatus =
+  | "passed"
+  | "failed"
+  | "timed-out"
+  | "interrupted"
+  | "skipped"
+  | "blocked";
 
 /**
  * What a conformance test claims to prove. `pass` is the ordinary case; the
@@ -139,8 +148,16 @@ export type TestFailure = {
   readonly stack?: string;
   /** Operations immediately before the failure, from the ae-a8n trace. */
   readonly lastOperations: readonly string[];
-  /** Where it failed: starting the session, the test body, or teardown. */
-  readonly phase?: "launch" | "body" | "cleanup";
+  /** Where it failed: loading the spec, starting the session, the test body, or teardown. */
+  readonly phase?: "load" | "launch" | "body" | "cleanup";
+  /**
+   * Set when the test body had not settled by the time teardown began —
+   * the runner waited a bounded drain first, and the body may still be
+   * issuing operations against a session that is being closed. The
+   * operations are never re-sent; this flag is the evidence that the
+   * test's own code outlived its budget.
+   */
+  readonly bodyStillRunning?: boolean;
   /**
    * Set when the session was refused because this run did not start its host:
    * "attached" when an After Effects was already running, "unknown" when
@@ -184,6 +201,12 @@ export type RunSummary = {
   readonly durationMs: number;
   readonly resultsDir: string;
   readonly reportPath: string;
+  /**
+   * True on reports written before the run finished — the runner rewrites
+   * `report.json` after every test so a crash still leaves evidence, and a
+   * file carrying this flag is a partial record, not a final one.
+   */
+  readonly partial?: boolean;
   /** Present when the run was asked for conformance evidence. */
   readonly conformancePath?: string;
   /** `conformance.json`'s own ok flag, when conformance evidence was written. */

@@ -144,10 +144,14 @@ the rest are `blocked`, and that After Effects is not touched. At the end of a t
 nothing is ever saved, so fixtures are not modified (checked on the real
 host).
 
-**Results.** `passed`, `failed`, `timed-out`, `skipped`, or `blocked`. A test
-whose After Effects did not quit is not reported as passed, and once a host
-cannot be vouched for the remaining tests are `blocked` instead of being run
-into it.
+**Results.** `passed`, `failed`, `timed-out`, `interrupted`, `skipped`, or
+`blocked`. A test whose After Effects did not quit is not reported as
+passed, and once a host cannot be vouched for the remaining tests are
+`blocked` instead of being run into it. `--timeout` bounds the test body;
+session launch and teardown have their own bounds, and SIGINT/SIGTERM
+interrupts the run cleanly (exit 130) with `report.json` already on disk —
+it is rewritten after every test, so a crash still leaves the evidence
+collected so far.
 
 **Static host methods.** A project's own host operations are declared in an
 extension module and compiled ahead of time by `ae-a8n`, then reached through
