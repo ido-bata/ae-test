@@ -76,7 +76,7 @@ export {
 } from "./config.js";
 export type { AeTestConfig, AeTestHost, LoadedConfig } from "./config.js";
 
-export { HostNotOwnedError, TestFixture } from "./fixture.js";
+export { HostNotOwnedError, TestContextRevokedError, TestFixture } from "./fixture.js";
 export type { FixtureOptions } from "./fixture.js";
 
 export {

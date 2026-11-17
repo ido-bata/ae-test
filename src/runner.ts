@@ -22,7 +22,12 @@ import {
   type CapabilityCatalogIndex,
   type ConformanceRunOptions,
 } from "./conformance.js";
-import { HostNotOwnedError, TestFixture, type FixtureOptions } from "./fixture.js";
+import {
+  HostNotOwnedError,
+  TestContextRevokedError,
+  TestFixture,
+  type FixtureOptions,
+} from "./fixture.js";
 import { DEFAULT_TIMEOUT_MS, clearRegistry, projectRelative, setDeclaringFile } from "./registry.js";
 import { SnapshotStore } from "./snapshot.js";
 import type {
@@ -528,10 +533,17 @@ async function runOne(
     });
     const snapshotStore = snapshots;
     const context: TestContext = {
-      ae: session,
+      ae: guardSession(session, () => fixture.revoked),
       fixture: fixture.fixture,
       testInfo,
-      expectFrame: (frame) => expectFrame(frame, snapshotStore),
+      expectFrame: (frame) => {
+        if (fixture.revoked) {
+          throw new TestContextRevokedError();
+        }
+        // The expectation is a context handle too: one obtained before
+        // revocation must not keep writing baselines afterwards.
+        return guardContext(expectFrame(frame, snapshotStore), () => fixture.revoked);
+      },
       expect,
     };
     // A test's own budget wins; otherwise the run's; otherwise the default.
@@ -545,15 +557,24 @@ async function runOne(
       .then(
         (value) => {
           bodySettled = true;
+          // Revoke at the earliest observable settle, not only in the
+          // finally below: work the body already queued must not slip
+          // through in the gap before the runner resumes.
+          fixture.revoke();
           return value;
         },
         (error: unknown) => {
           bodySettled = true;
+          fixture.revoke();
           throw error;
         },
       );
     await withBudget(body, budgetMs, declaration.title, options.signal);
   } catch (error) {
+    // The runner has stopped attributing work to this test: whatever the
+    // body still holds is revoked before the drain wait, so nothing new
+    // leaves through its handles while settlement is observed.
+    fixture.revoke();
     status =
       error instanceof TestTimeoutError
         ? "timed-out"
@@ -579,6 +600,10 @@ async function runOne(
       }
     }
   } finally {
+    // Every exit path ends the test's context — a settled body, a timed-out
+    // one, a failed launch — before artifacts are read and teardown begins.
+    // Idempotent with the revoke in the catch above.
+    fixture.revoke();
     artifacts = [
       ...fixture.collectArtifacts(session),
       ...(snapshots?.artifacts ?? []),
@@ -621,6 +646,112 @@ async function runOne(
       ? {}
       : { conformance: declaration.conformance }),
   };
+}
+
+/**
+ * Shared state for one guarded object graph: the revocation check plus an
+ * identity cache, so the same underlying object always yields the same
+ * proxy and cyclic graphs cannot recurse forever.
+ */
+type GuardState = {
+  readonly isRevoked: () => boolean;
+  readonly seen: WeakMap<object, unknown>;
+};
+
+/**
+ * The session — and everything reachable from it — as the test body may see
+ * it.
+ *
+ * `AfterEffects` and the objects its methods return (`Project`, `Comp`,
+ * `Layer`, `Effect`, `Parameter`, …) keep their state in private fields, so
+ * they cannot be subclassed or re-wrapped method by method. Instead every
+ * object the context hands out is proxied: while the test is live the proxy
+ * is transparent (methods are applied to the real target so private fields
+ * keep working, and promise results are guarded in turn, which is what
+ * covers derived handles a body held on to); once `isRevoked` reports the
+ * test's terminal state, any further use throws `TestContextRevokedError`
+ * before a call can be dispatched.
+ *
+ * Symbol-keyed access other than `Symbol.asyncDispose` still reaches the
+ * target: it is introspection (inspection, runtime internals), not host
+ * work. `Symbol.asyncDispose` performs a real close, so it is revoked too.
+ */
+function guardSession(
+  session: AfterEffects,
+  isRevoked: () => boolean,
+): AfterEffects {
+  return guardValue(session, { isRevoked, seen: new WeakMap() });
+}
+
+/** Guards any context-owned value the same way `guardSession` guards `ae`. */
+function guardContext<T>(value: T, isRevoked: () => boolean): T {
+  return guardValue(value, { isRevoked, seen: new WeakMap() });
+}
+
+function guardValue<T>(value: T, state: GuardState): T {
+  if (value === null || (typeof value !== "object" && typeof value !== "function")) {
+    return value;
+  }
+  const cached = state.seen.get(value);
+  if (cached !== undefined) {
+    return cached as T;
+  }
+  const proxy = new Proxy(value, {
+    get(target, property) {
+      assertContextActive(property, state);
+      const member: unknown = Reflect.get(target, property);
+      if (typeof member === "function") {
+        const callable = member as (this: unknown, ...args: unknown[]) => unknown;
+        return (...args: unknown[]) =>
+          guardCallResult(callable.apply(target, args), state);
+      }
+      return guardValue(member, state);
+    },
+    set(target, property, member) {
+      assertContextActive(property, state);
+      return Reflect.set(target, property, member);
+    },
+    apply(target, thisArg, args) {
+      return guardCallResult(
+        Reflect.apply(
+          target as unknown as (this: unknown, ...inner: unknown[]) => unknown,
+          thisArg,
+          args,
+        ),
+        state,
+      );
+    },
+  });
+  state.seen.set(value, proxy);
+  return proxy;
+}
+
+/**
+ * Guards what a call produced: a promise's resolved value is guarded too,
+ * which is how `openProject().then(project => …)` stays inside the contract.
+ */
+function guardCallResult(result: unknown, state: GuardState): unknown {
+  if (isThenable(result)) {
+    return Promise.resolve(result).then((resolved) => guardValue(resolved, state));
+  }
+  return guardValue(result, state);
+}
+
+function isThenable(value: unknown): value is PromiseLike<unknown> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { then?: unknown }).then === "function"
+  );
+}
+
+function assertContextActive(property: string | symbol, state: GuardState): void {
+  if (!state.isRevoked()) {
+    return;
+  }
+  if (typeof property === "string" || property === Symbol.asyncDispose) {
+    throw new TestContextRevokedError();
+  }
 }
 
 /**

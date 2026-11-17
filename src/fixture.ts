@@ -70,6 +70,23 @@ export class HostNotOwnedError extends Error {
   }
 }
 
+/**
+ * The test's context handles were revoked: the runner reached the test's
+ * terminal state (settled, timed out, failed, or interrupted) and tore the
+ * session down. A body that outlived its budget cannot be cancelled — this
+ * error is how its remaining calls are refused instead of reaching a closed
+ * session, an unlisted artifact write, or a shared baseline.
+ */
+export class TestContextRevokedError extends Error {
+  constructor() {
+    super(
+      "the test's context was revoked when the test reached its terminal state; " +
+        "its After Effects session, fixture and snapshot handles no longer accept work",
+    );
+    this.name = "TestContextRevokedError";
+  }
+}
+
 export type FixtureOptions = {
   /** Root for per-test output. Each test gets a subdirectory. */
   readonly resultsDir: string;
@@ -105,6 +122,12 @@ export class TestFixture {
   readonly #attachments: Artifact[] = [];
   /** Every project fixture this test resolved, in the order it first did. */
   readonly #fixtures: FixtureDigest[] = [];
+  /**
+   * Set when the runner ends this test's context. Work the body left running
+   * keeps its references, but every handle it was given refuses new use —
+   * see `revoke`.
+   */
+  #revoked = false;
 
   constructor(info: TestInfo, options: FixtureOptions) {
     this.#info = info;
@@ -114,6 +137,34 @@ export class TestFixture {
 
   get testInfo(): TestInfo {
     return this.#info;
+  }
+
+  /**
+   * Whether this test's context handles currently refuse work. The runner
+   * revokes them the moment it stops attributing work to the test — when the
+   * body settles, and when its budget or the run's abort cuts the wait short.
+   */
+  get revoked(): boolean {
+    return this.#revoked;
+  }
+
+  /**
+   * Ends this test's context. Idempotent; safe to call on every exit path.
+   *
+   * Revocation cannot cancel what the body already dispatched — an in-flight
+   * operation still races teardown inside ae-a8n — it only guarantees that no
+   * *new* operation, attachment, or snapshot write leaves through the handles
+   * the test was given. Detached asynchronous work the body spawned is outside
+   * this guarantee entirely: JavaScript offers no way to take it back.
+   */
+  revoke(): void {
+    this.#revoked = true;
+  }
+
+  #assertActive(): void {
+    if (this.#revoked) {
+      throw new TestContextRevokedError();
+    }
   }
 
   get fixture(): Fixture {
@@ -262,6 +313,7 @@ export class TestFixture {
    * opened even if the file changes afterwards.
    */
   project(name: string): string {
+    this.#assertActive();
     const dir = this.#options.projectsDir ?? resolve(process.cwd(), "fixtures");
     const path = resolve(dir, name);
     try {
@@ -291,6 +343,7 @@ export class TestFixture {
   }
 
   attach(name: string, contents: string | Uint8Array): Promise<Artifact> {
+    this.#assertActive();
     const path = join(this.#info.outputDir, name);
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, contents);

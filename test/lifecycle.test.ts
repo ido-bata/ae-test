@@ -37,7 +37,18 @@ beforeEach(() => {
   specsDir = mkdtempSync(join(tmpdir(), "ae-test-specs-"));
   projectDir = mkdtempSync(join(tmpdir(), "ae-test-projects-"));
   writeFileSync(join(projectDir, "fixture.aep"), "placeholder");
-  delete (globalThis as { __gate?: Promise<void> }).__gate;
+  for (const key of [
+    "__gate",
+    "__gate2",
+    "__gate3",
+    "__late",
+    "__late2",
+    "__late3",
+    "__release3",
+    "__zombie3",
+  ]) {
+    delete (globalThis as Record<string, unknown>)[key];
+  }
 });
 
 afterEach(() => {
@@ -271,6 +282,160 @@ describe("a spec that fails to load", () => {
     expect(summary.results[0]?.failure?.message).toMatch(/cannot load/);
     expect(summary.results[1]).toMatchObject({ status: "passed" });
     expect(exitCodeFor(summary)).toBe(1);
+  });
+});
+
+describe("a body that outlives its context", () => {
+  it("has every handle revoked, writes nothing, and lets the next test run", async () => {
+    const file = writeSpec(
+      "zombie.spec.ts",
+      `
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+
+test("times out with work left behind", async ({ ae, fixture, expectFrame, testInfo }) => {
+  const project = await ae.openProject(fixture.project("fixture.aep"));
+  const comp = await project.comp("Main");
+  const layer = await comp.layer("Solid 1");
+  const effect = await layer.effects.apply("ADBE Fake Gaussian Blur");
+  const parameter = effect.parameter("Amount");
+  const expectation = expectFrame(await comp.renderFrame(0));
+  const late = (globalThis.__late ??= {});
+  // Handles derived before the timeout: a zombie holding any of these must
+  // hit the same revoked boundary as the context entry points.
+  late.project = project;
+  late.comp = comp;
+  late.parameter = parameter;
+  late.expectation = expectation;
+  setTimeout(() => {
+    const attempt = (name, fn) => {
+      try { fn(); late[name] = "no-throw"; }
+      catch (error) { late[name] = error.name; }
+    };
+    attempt("ae", () => ae.version());
+    attempt("attach", () => fixture.attach("late.txt", "late"));
+    attempt("fixtureProject", () => fixture.project("fixture.aep"));
+    attempt("project", () => late.project.comp("Main"));
+    attempt("comp", () => late.comp.renderFrame(1));
+    attempt("parameter", () => late.parameter.set(1));
+    attempt("expectFrameCall", () => expectFrame({}));
+    attempt("expectation", () => late.expectation.toMatchSnapshot("late"));
+    attempt("expect", () => expect(1).toBe(1));
+    late.attachPath = join(testInfo.outputDir, "late.txt");
+  }, 150);
+  await new Promise(() => {});
+});
+test("the next test runs clean", async () => {
+  const late = globalThis.__late;
+  expect(late.ae).toBe("TestContextRevokedError");
+  expect(late.attach).toBe("TestContextRevokedError");
+  expect(late.fixtureProject).toBe("TestContextRevokedError");
+  expect(late.project).toBe("TestContextRevokedError");
+  expect(late.comp).toBe("TestContextRevokedError");
+  expect(late.parameter).toBe("TestContextRevokedError");
+  expect(late.expectFrameCall).toBe("TestContextRevokedError");
+  expect(late.expectation).toBe("TestContextRevokedError");
+  // expect is a pure assertion helper, not a handle on test state: it still works.
+  expect(late.expect).toBe("no-throw");
+  expect(existsSync(late.attachPath)).toBe(false);
+});
+`,
+    );
+
+    const summary = await run(
+      options(file, { drainTimeoutMs: 400, timeoutMs: 100 }),
+    );
+
+    const [first, second] = summary.results;
+    expect(first).toMatchObject({
+      status: "timed-out",
+      failure: { name: "TestTimeoutError", bodyStillRunning: true },
+      cleanup: { status: "ok", quit: true },
+    });
+    // Teardown succeeded, so the run moved on — and the zombie's late work
+    // was refused instead of reaching the host or the results directory.
+    expect(second).toMatchObject({ status: "passed" });
+    expect(exitCodeFor(summary)).toBe(1);
+  });
+
+  it("is already revoked while the runner drains a late-settling body", async () => {
+    const file = writeSpec(
+      "drain-zombie.spec.ts",
+      `
+test("settles during the drain", async ({ ae }) => {
+  await globalThis.__gate2;
+  try {
+    await ae.version();
+    globalThis.__late2 = "no-throw";
+  } catch (error) {
+    globalThis.__late2 = error.name;
+  }
+});
+test("the next test observes the refusal", async () => {
+  expect(globalThis.__late2).toBe("TestContextRevokedError");
+});
+`,
+    );
+    let release!: () => void;
+    (globalThis as { __gate2?: Promise<void> }).__gate2 = new Promise<void>(
+      (resolvePromise) => {
+        release = resolvePromise;
+      },
+    );
+    (globalThis as { __late2?: string | undefined }).__late2 = undefined;
+
+    const controller = new AbortController();
+    const pending = run(
+      options(file, { drainTimeoutMs: 2_000, timeoutMs: 100, signal: controller.signal }),
+    );
+    // Let the body time out, then release it inside the drain window.
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 300));
+    release();
+    const summary = await pending;
+    controller.abort();
+
+    const [first, second] = summary.results;
+    expect(first).toMatchObject({ status: "timed-out" });
+    // The body settled inside the drain, so it is not flagged as still
+    // running — but its post-budget call was already refused.
+    expect(first?.failure?.bodyStillRunning).toBeUndefined();
+    expect(second).toMatchObject({ status: "passed" });
+    expect((globalThis as { __late2?: string }).__late2).toBe("TestContextRevokedError");
+  });
+
+  it("revokes handles a passing body left behind in detached work", async () => {
+    const file = writeSpec(
+      "pass-zombie.spec.ts",
+      `
+test("passes and leaves a detached worker", async ({ ae, fixture }) => {
+  const late = (globalThis.__late3 ??= {});
+  let release;
+  globalThis.__gate3 = new Promise((resolvePromise) => { release = resolvePromise; });
+  globalThis.__zombie3 = (async () => {
+    await globalThis.__gate3;
+    try { await ae.version(); late.ae = "no-throw"; }
+    catch (error) { late.ae = error.name; }
+    try { await fixture.attach("zombie.txt", "zombie"); late.attach = "no-throw"; }
+    catch (error) { late.attach = error.name; }
+  })();
+  globalThis.__release3 = release;
+});
+test("the observer releases and checks the zombie", async () => {
+  globalThis.__release3();
+  await globalThis.__zombie3;
+  expect(globalThis.__late3.ae).toBe("TestContextRevokedError");
+  expect(globalThis.__late3.attach).toBe("TestContextRevokedError");
+});
+`,
+    );
+
+    const summary = await run(options(file));
+
+    expect(summary.results.map((result) => result.status)).toEqual(["passed", "passed"]);
+    expect((globalThis as { __late3?: Record<string, string> }).__late3).toEqual({
+      ae: "TestContextRevokedError",
+      attach: "TestContextRevokedError",
+    });
   });
 });
 
