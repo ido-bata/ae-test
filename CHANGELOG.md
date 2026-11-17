@@ -2,7 +2,7 @@
 
 ## 0.2.0-beta.2
 
-Depends on `@ido-bata/ae-a8n` `0.1.0-alpha.2` exactly. Second beta on the 0.2
+Depends on `@ido-bata/ae-a8n` `0.2.0` exactly. Second beta on the 0.2
 train: runner lifecycle safety, test-context revocation, and the consumer
 real-host lane documented since beta.1.
 
