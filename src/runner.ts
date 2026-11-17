@@ -22,7 +22,12 @@ import {
   type CapabilityCatalogIndex,
   type ConformanceRunOptions,
 } from "./conformance.js";
-import { HostNotOwnedError, TestFixture, type FixtureOptions } from "./fixture.js";
+import {
+  HostNotOwnedError,
+  TestContextRevokedError,
+  TestFixture,
+  type FixtureOptions,
+} from "./fixture.js";
 import { DEFAULT_TIMEOUT_MS, clearRegistry, projectRelative, setDeclaringFile } from "./registry.js";
 import { SnapshotStore } from "./snapshot.js";
 import type {
@@ -528,10 +533,15 @@ async function runOne(
     });
     const snapshotStore = snapshots;
     const context: TestContext = {
-      ae: session,
+      ae: guardSession(session, () => fixture.revoked),
       fixture: fixture.fixture,
       testInfo,
-      expectFrame: (frame) => expectFrame(frame, snapshotStore),
+      expectFrame: (frame) => {
+        if (fixture.revoked) {
+          throw new TestContextRevokedError();
+        }
+        return expectFrame(frame, snapshotStore);
+      },
       expect,
     };
     // A test's own budget wins; otherwise the run's; otherwise the default.
@@ -554,6 +564,10 @@ async function runOne(
       );
     await withBudget(body, budgetMs, declaration.title, options.signal);
   } catch (error) {
+    // The runner has stopped attributing work to this test: whatever the
+    // body still holds is revoked before the drain wait, so nothing new
+    // leaves through its handles while settlement is observed.
+    fixture.revoke();
     status =
       error instanceof TestTimeoutError
         ? "timed-out"
@@ -579,6 +593,10 @@ async function runOne(
       }
     }
   } finally {
+    // Every exit path ends the test's context — a settled body, a timed-out
+    // one, a failed launch — before artifacts are read and teardown begins.
+    // Idempotent with the revoke in the catch above.
+    fixture.revoke();
     artifacts = [
       ...fixture.collectArtifacts(session),
       ...(snapshots?.artifacts ?? []),
@@ -621,6 +639,42 @@ async function runOne(
       ? {}
       : { conformance: declaration.conformance }),
   };
+}
+
+/**
+ * The session as the test body may see it.
+ *
+ * `AfterEffects` keeps its state in private fields, so the guard cannot
+ * subclass or re-wrap its methods — it proxies property access instead and
+ * binds every function back to the real instance. While the test is live the
+ * proxy is transparent; once `isRevoked` reports the test's terminal state,
+ * any further use throws `TestContextRevokedError` before a call can be
+ * dispatched. Symbol-keyed access (inspection, `Symbol.asyncDispose`) still
+ * reaches the target: it cannot start new host work.
+ */
+function guardSession(
+  session: AfterEffects,
+  isRevoked: () => boolean,
+): AfterEffects {
+  return new Proxy(session, {
+    get(target, property) {
+      if (typeof property === "string" && isRevoked()) {
+        throw new TestContextRevokedError();
+      }
+      const value: unknown = Reflect.get(target, property);
+      if (typeof value !== "function") {
+        return value;
+      }
+      const callable = value as (this: unknown, ...args: unknown[]) => unknown;
+      return callable.bind(target);
+    },
+    set(target, property, value) {
+      if (typeof property === "string" && isRevoked()) {
+        throw new TestContextRevokedError();
+      }
+      return Reflect.set(target, property, value);
+    },
+  });
 }
 
 /**

@@ -28,6 +28,7 @@ const PUBLIC_EXPORTS = [
   "DEFAULT_TIMEOUT_MS",
   "HostNotOwnedError",
   "SnapshotStore",
+  "TestContextRevokedError",
   "TestFixture",
   "buildConformanceReport",
   "clearRegistry",

@@ -118,7 +118,7 @@ test("fails on purpose", async ({ expect }) => { expect(1).toBe(2); });
   CONFIG_FILE_NAME, CONFORMANCE_RECORD_VERSION, CONFORMANCE_REPORT_SCHEMA,
   ConfigError, ConformanceError, DEFAULT_BASELINE_DIR, DEFAULT_RESULTS_DIR,
   DEFAULT_SPEC_PATTERNS, DEFAULT_TIMEOUT_MS, HostNotOwnedError, SnapshotStore,
-  TestFixture, buildConformanceReport, clearRegistry, countByStatus, discoverSpecs,
+  TestContextRevokedError, TestFixture, buildConformanceReport, clearRegistry, countByStatus, discoverSpecs,
   environmentBlockReason, evaluateCompatibility, exitCodeFor, expect, expectFrame,
   findConfigFile, formatFailure, formatResultLine, formatRun, formatSummary,
   hasFailures, hostProvenance, loadCapabilityCatalog, loadConfigFile, loadTestFiles,
@@ -150,7 +150,7 @@ void AssertionError; void AsyncExpectation; void CAPABILITY_CATALOG_SCHEMA;
 void CONFIG_FILE_NAME; void CONFORMANCE_RECORD_VERSION; void CONFORMANCE_REPORT_SCHEMA;
 void ConfigError; void ConformanceError; void DEFAULT_BASELINE_DIR;
 void DEFAULT_RESULTS_DIR; void DEFAULT_SPEC_PATTERNS; void DEFAULT_TIMEOUT_MS;
-void HostNotOwnedError; void SnapshotStore; void TestFixture;
+void HostNotOwnedError; void SnapshotStore; void TestContextRevokedError; void TestFixture;
 void buildConformanceReport; void clearRegistry; void countByStatus; void discoverSpecs;
 void environmentBlockReason; void evaluateCompatibility; void exitCodeFor; void expect;
 void expectFrame; void findConfigFile; void formatFailure; void formatResultLine;
