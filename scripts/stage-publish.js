@@ -11,7 +11,11 @@
  * - the npm CLI was found and runs, is the pinned one (NPM_CLI_VERSION, when
  *   set) and is new enough for `npm stage` (11.15.0);
  * - the tarball is the one the gate checked (sha1);
- * - the dist-tag is `next`, the same as package.json publishConfig.tag.
+ * - the dist-tag is the manifest's own (`publishConfig.tag`, or npm's
+ *   default `latest` when unset) — `next` for a pre-release, `latest` for a
+ *   stable version. A pre-release never goes to `latest`, and a stable
+ *   version never goes anywhere else: `npm install @ido-bata/ae-test` must
+ *   keep meaning "the supported release".
  *
  * The tag is passed explicitly: `npm stage publish` takes publishConfig.tag
  * into the request, but its own log line reports only the command-line tag,
@@ -27,8 +31,46 @@ import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, readFileSync, realpathSync } from "node:fs";
 import { posix, win32 } from "node:path";
 
-export const DIST_TAG = "next";
 export const MINIMUM_NPM = "11.15.0";
+
+const PRERELEASE = /^\d+\.\d+\.\d+-.+$/;
+
+/**
+ * The dist-tag a manifest publishes under: `publishConfig.tag`, or npm's
+ * default `latest` when the field is absent. Returns null when the field is
+ * present but not a usable tag.
+ *
+ * @param {{ version?: string, publishConfig?: { tag?: unknown } }} manifest
+ * @returns {string | null}
+ */
+export function distTagFor(manifest) {
+  const tag = manifest.publishConfig?.tag ?? "latest";
+  return typeof tag === "string" && tag !== "" ? tag : null;
+}
+
+/**
+ * The tag a version must publish under. A pre-release never lands on
+ * `latest` (an `npm install` without a tag must not pick it up), and a
+ * stable version publishes to `latest` only — a stable sitting on `next`
+ * would leave `latest` pointing at an older release.
+ *
+ * @param {{ version: string, publishConfig?: { tag?: unknown } }} manifest
+ * @returns {{ ok: true, tag: string } | { ok: false, error: string }}
+ */
+export function checkDistTag(manifest) {
+  const tag = distTagFor(manifest);
+  if (tag === null) {
+    return { ok: false, error: `publishConfig.tag is ${JSON.stringify(manifest.publishConfig?.tag)}, not a usable dist-tag` };
+  }
+  const prerelease = PRERELEASE.test(manifest.version);
+  if (prerelease && tag === "latest") {
+    return { ok: false, error: `pre-release ${manifest.version} must not publish to latest; set publishConfig.tag (e.g. "next")` };
+  }
+  if (!prerelease && tag !== "latest") {
+    return { ok: false, error: `stable ${manifest.version} must publish to latest, not ${tag}` };
+  }
+  return { ok: true, tag };
+}
 
 /** @param {string} a @param {string} b */
 export function versionAtLeast(a, b) {
@@ -180,16 +222,16 @@ function main() {
   }
 
   const manifest = JSON.parse(readFileSync("package.json", "utf-8"));
-  if (manifest.publishConfig?.tag !== DIST_TAG) {
-    fail(`publishConfig.tag is ${manifest.publishConfig?.tag}, but staging uses ${DIST_TAG}`);
-  }
+  const tagCheck = checkDistTag(manifest);
+  if (!tagCheck.ok) fail(/** @type {{ error: string }} */ (tagCheck).error);
+  const tag = /** @type {{ tag: string }} */ (tagCheck).tag;
 
   const result = runNpm(cli, [
     "stage",
     "publish",
     tarball,
     "--tag",
-    DIST_TAG,
+    tag,
     "--access",
     "public",
     "--provenance=false",
@@ -200,8 +242,8 @@ function main() {
   if (result.status !== 0) {
     fail(`npm stage publish exited ${result.status}`);
   }
-  if (!new RegExp(`Staging to \\S+ with tag ${DIST_TAG} and public access`).test(result.stderr)) {
-    fail(`npm did not report staging with tag ${DIST_TAG}`);
+  if (!new RegExp(`Staging to \\S+ with tag ${tag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} and public access`).test(result.stderr)) {
+    fail(`npm did not report staging with tag ${tag}`);
   }
 
   /** @type {Record<string, { name: string, version: string, shasum: string, stageId?: string }>} */
@@ -214,7 +256,7 @@ function main() {
 
   const id = `${manifest.name}@${manifest.version}`;
   const stageId = staged.stageId ?? "(dry run)";
-  console.log(`${dryRun ? "would stage" : "staged"} ${id} with tag ${DIST_TAG}, shasum ${expected}, stage id ${stageId}`);
+  console.log(`${dryRun ? "would stage" : "staged"} ${id} with tag ${tag}, shasum ${expected}, stage id ${stageId}`);
 
   if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `stage-id=${stageId}\n`);
   if (process.env.GITHUB_STEP_SUMMARY && !dryRun) {
@@ -223,7 +265,7 @@ function main() {
       [
         `## ${id} is staged, not published`,
         "",
-        `Stage id \`${stageId}\`, dist-tag \`${DIST_TAG}\`, shasum \`${expected}\`.`,
+        `Stage id \`${stageId}\`, dist-tag \`${tag}\`, shasum \`${expected}\`.`,
         "A maintainer approves it with 2FA (docs/releasing.md):",
         "",
         "```bash",
