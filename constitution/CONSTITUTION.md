@@ -70,6 +70,8 @@ subject to:
 
 project utilityの具体的なtrade-offはproject evidence、goal、risk、cost、maintainability、quality、delivery contextから判断します。
 
+要求充足、既知欠陥の排除、候補間の改善、最適性は別の主張です。既存実装の内部構造は、根拠のある維持条件でない限り変更の制約にしません。比較関係は要求と制約から定め、手続きの完了・違反不在・探索終了を最適性の証明へ読み替えません。ソフトウェア全体への具体化は [system-quality](../skills/system-quality/SKILL.md) にあります。
+
 ## Refinement
 
 Operating Model / Practice は、上位propertyに対して次を説明できるようにします。
