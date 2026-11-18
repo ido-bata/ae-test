@@ -151,17 +151,26 @@ to produce `real-host-verified` conformance evidence on a machine with
 After Effects installed, not to run in CI:
 
 ```sh
+npm ci
+npm run build
 node dist/cli.js --config conformance/real-host/ae-test.config.json \
   --install-dir "/Applications/Adobe After Effects 2026" \
-  --conformance --capability-catalog <ae-devtools catalog.json> \
+  --conformance --capability-catalog "<path to ae-devtools catalog.json>" \
   --source-sha "$(git rev-parse HEAD)"
 ```
+
+Run this from a clean checkout at the candidate SHA so `dist/` and the
+recorded `--source-sha` describe the same code; `--capability-catalog`
+takes the path to an ae-devtools `catalog.json` on your machine.
 
 It exercises the scripting domain of ae-a8n's built-in dispatch table —
 project/comp/layer reads, writes on a disposable untitled project, an effect
 parameter round-trip, and renders whose pixels respond to the parameter —
-through the same public API a consumer uses. `--update-snapshots` records
-the render baseline on the first run; later runs compare against it. Every
+through the same public API a consumer uses. The render baseline is
+committed under `__snapshots__/conformance/real-host/` (environment-scoped);
+a plain run compares against it. `--update-snapshots` is only for
+deliberately recording or replacing that baseline — never as the routine
+verification step. Every
 test still pays one AE launch, so the suite is four launches, not a smoke
 test. SDK/native-plugin capabilities stay upstream-owned (ae-devtools) and
 are not claimed here.

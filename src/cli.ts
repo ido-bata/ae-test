@@ -179,7 +179,9 @@ function parse(argv: readonly string[]): Parsed {
       }
       case "--install-dir": {
         const value = next();
-        if (value === undefined) return { files, options, error: "--install-dir needs a value" };
+        if (value === undefined || value.length === 0 || value.startsWith("-")) {
+          return { files, options, error: "--install-dir needs a path value" };
+        }
         options.installDir = value;
         break;
       }
