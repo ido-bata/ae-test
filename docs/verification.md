@@ -58,6 +58,13 @@ disposable comp at run time — and asserts on pixels: Gaussian Blur 2
 changes the render, a parameter write reaches the pixels, and a snapshot
 is recorded then compared on a second run.
 
+Provision the real-host consumer from the spec and config shipped inside
+the installed package — `node_modules/@ido-bata/ae-test/examples/consumer/`
+— or from a fresh checkout at the freeze SHA. Never reuse a scratch copy
+kept across releases: a stale spec still asks for the pre-#60
+`fixtures/real-host.aep`, which is no longer a requirement (the spec
+builds a disposable comp).
+
 | When (UTC) | ae-test | ae-a8n | Result |
 | --- | --- | --- | --- |
 | 2026-10-15 05:15–05:48 | 1261f77 (pre-release) | bb4c197, from a checkout | 20 of 20 runs passed (10 with a third-party CEP extension disabled, 10 enabled) |
@@ -67,7 +74,7 @@ is recorded then compared on a second run.
 | 2026-11-17 15:51 | `381055f` (pin bump only) | `0.2.0` from npm | **failed in the spec.** Launch, ownership, render and teardown all worked on the real host; `expect(x).toBeDefined()` then failed on a defined value — an inverted matcher in ae-test itself, fixed as #65 |
 | 2026-11-17 16:2x | `d80a60c` (release head: ae-a8n `0.2.0` pin + #65) | `0.2.0` from npm | **pass.** Packed consumer, two runs: `--update-snapshots` recorded the baseline, then a plain run matched it. 1/1 each (~7.5 s), `cleanup.status=ok`, `quit=true`, no After Effects process left afterwards. No script-trust dialog appeared in either run |
 | 2026-11-18 00:2x–02:0x | `613bba8` / `5885643` / `b2af088` (1.0.0 RC freeze; 差分は docs のみ) | `0.2.0` from npm | **pass.** Same packed-consumer lane on the 1.0.0 tarball at each freeze SHA: two runs each, snapshot recorded then compared, 1/1 each, `cleanup.status=ok`, `quit=true`, no After Effects process left afterwards (AE 26.5.3x9 build 9, uid 501, asid 100021, transport `script-invocation`). Final RC tarball shasum `3dd6b068…` |
-| 2026-11-18 (final RC freeze) | `afe47cd` (`release/1.0.0` head: `#81`–`#83` 内部 refactor、`#23` test/CI、`#88` release tooling OCR、`#91` canon sync を含む) | `0.2.0` from npm | **partially re-verified.** Packed tarball at `afe47cd`: shasum `671ba1e3ea6f3d11ba5561aebaf062c085129a79`, 45 files, `check-packed-package.js` pass, fake + consumer suites green。自動検証 `npm run check` 225 tests / 19 files pass。real-host 再実行は `fixtures/real-host.aep` が consumer dir に存在せず blocked（.aep は AE GUI での一度きりの作成が必要）。公開 API・`dist/` runtime は byte 同等で、前行の real-host 証拠は同じ公開契約を対象とするが、本 tarball 自体の実機 run は未取得 |
+| 2026-11-18 04:17 | `afe47cd` / `15bc03a` (final RC freeze; tarball built at `afe47cd`, docs-only commits after) | `0.2.0` from npm | **pass.** Fresh external consumer (`/tmp/ae-test-rc-acceptance`) installed the RC tarball shasum `671ba1e3ea6f3d11ba5561aebaf062c085129a79` and ran the spec shipped inside the package: two runs — `--update-snapshots` recorded the baseline, then a plain run matched it. 1/1 each (~7.5 s / ~9.8 s), `cleanup.status=ok`, `quit=true`, trace + before/applied/after renders collected, no After Effects process left afterwards (AE 26.5.3x9 build 9, uid 501, asid 100021, transport `script-invocation`). An earlier attempt on the same tarball failed closed twice for environment reasons, not defects: a pre-existing AE process (`HostNotOwnedError`, the designed refusal) and a stale scratch consumer whose pre-#60 spec asked for `fixtures/real-host.aep` |
 
 ### Local console-session lane
 
