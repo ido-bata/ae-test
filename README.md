@@ -45,11 +45,10 @@ Or configure the project once and let the CLI discover the suite:
 npx ae-test          # runs what the config selects, against the fake host
 ```
 
-> **Beta.** `0.2.0-beta.2` is the current candidate; the `next` dist-tag
-> carries pre-releases. The API is stabilising but may still change between
-> betas — breaking changes land in beta releases and are listed in the
-> CHANGELOG. Only macOS has been run against a real After Effects (below),
-> and the current candidate has not been re-verified there yet.
+> **Pre-releases.** `next` carries beta/alpha builds while the stable line
+> moves; `npm install @ido-bata/ae-test` (no tag) always resolves to the
+> supported release. Breaking changes are listed in the CHANGELOG, and the
+> compatibility contract is [docs/api.md](docs/api.md).
 
 ## What has been verified, and how
 
@@ -58,7 +57,7 @@ Two different kinds of evidence. They are not interchangeable.
 | | What it shows | Where |
 | --- | --- | --- |
 | **Fake host** (automated) | The runner, fixtures, assertions, snapshots, reports, CLI exit codes and teardown rules, against an in-process model of After Effects. No After Effects involved. | CI on every pull request: the unit tests (including a type check of this README's examples against the built types), the CLI smoke, and `scripts/check-packed-package.js` (the packed tarball installed into an empty project, run through the installed `ae-test`) |
-| **macOS, real After Effects** (manual) | The same CLI, without `--fake-host`, driving After Effects 2026 (26.5x89, Japanese UI) on macOS 27 / arm64: a real `.aep`, a built-in effect by match name, parameter write/read, a PNG render, snapshot comparison, teardown | Run by hand on one Mac; not part of CI. Latest recorded run: the 0.1.0-alpha.0 code with `@ido-bata/ae-a8n@0.1.0-alpha.0` from npm, 4/4 passed. This branch's code has **not** been re-run on a real host (see [docs/verification.md](docs/verification.md)) |
+| **macOS, real After Effects** (manual) | The same CLI, without `--fake-host`, driving After Effects 2026 (26.5x89, Japanese UI) on macOS 27 / arm64: a real `.aep`, a built-in effect by match name, parameter write/read, a PNG render, snapshot comparison, teardown | Run by hand on one Mac; not part of CI. Latest recorded run: the 0.2.0-beta.2 release head with `@ido-bata/ae-a8n@0.2.0` from npm — packed consumer, snapshot record + match, 1/1 passed, no After Effects left running ([docs/verification.md](docs/verification.md)) |
 | **Windows** | Nothing. ae-test does not run there today: ae-a8n cannot establish that it started After Effects on Windows, and ae-test refuses any session it does not own | — |
 
 A green CI run means the fake host passed. It does not mean After Effects
@@ -67,7 +66,7 @@ behaved; only a real-host run says that.
 ## Install
 
 ```bash
-npm install --save-dev @ido-bata/ae-test@next
+npm install --save-dev @ido-bata/ae-test
 ```
 
 `@ido-bata/ae-a8n` comes with it, pinned to exactly `0.2.0`.
