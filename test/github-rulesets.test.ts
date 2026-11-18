@@ -86,10 +86,10 @@ describe("release tags", () => {
     expect(tags.rules.map((r) => r.type).sort()).toEqual(["deletion", "non_fast_forward", "update"]);
     expect(rule(tags, "creation")).toBeUndefined();
     // update_allows_force_push is not an API parameter for tag rulesets;
-    // the non_fast_forward rule already blocks force-push tag updates.
-    expect(rule(tags, "update")?.parameters).toEqual({
-      update_allows_fetch_and_merge: false,
-    });
+    // the non_fast_forward rule already blocks force-push tag updates. The
+    // update rule itself carries no parameters: the API does not return them
+    // on read-back, so a desired parameter could never converge (#104).
+    expect(rule(tags, "update")?.parameters).toBeUndefined();
     expect(tags.bypass_actors).toEqual([]);
   });
 });
