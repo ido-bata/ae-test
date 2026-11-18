@@ -53,6 +53,7 @@ export type {
   ConformanceCatalogSummary,
   ConformanceClassification,
   ConformanceDiagnostic,
+  ConformanceDiagnosticCode,
   ConformanceHost,
   ConformanceMatrixCell,
   ConformanceRecord,

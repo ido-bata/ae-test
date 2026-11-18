@@ -31,16 +31,18 @@ import {
 } from "./fixture.js";
 import { DEFAULT_TIMEOUT_MS, clearRegistry, projectRelative, setDeclaringFile } from "./registry.js";
 import { SnapshotStore } from "./snapshot.js";
-import type {
-  Artifact,
-  CleanupOutcome,
-  RunSummary,
-  SessionFacts,
-  TestContext,
-  TestDeclaration,
-  TestFailure,
-  TestResult,
-  TestStatus,
+import {
+  FAKE_TRANSPORT_KIND,
+  REAL_TRANSPORT_KIND,
+  type Artifact,
+  type CleanupOutcome,
+  type RunSummary,
+  type SessionFacts,
+  type TestContext,
+  type TestDeclaration,
+  type TestFailure,
+  type TestResult,
+  type TestStatus,
 } from "./types.js";
 
 export const DEFAULT_RESULTS_DIR = ".ae-test-results";
@@ -51,9 +53,6 @@ export const DEFAULT_RESULTS_DIR = ".ae-test-results";
  * environment subdirectories underneath it (see `snapshotEnvironmentKey`).
  */
 export const DEFAULT_BASELINE_DIR = "__snapshots__";
-
-/** ae-a8n's in-process fake host; its kind is the one stable identifier it has. */
-const FAKE_TRANSPORT_KIND = "fake-in-process";
 
 export type RunOptions = {
   /** Test files to import. */
@@ -127,7 +126,7 @@ function snapshotEnvironmentKey(
 ): string {
   const kind =
     transport === undefined
-      ? "script-invocation"
+      ? REAL_TRANSPORT_KIND
       : typeof transport.kind === "string" && transport.kind.length > 0
         ? transport.kind
         : "unknown-transport";

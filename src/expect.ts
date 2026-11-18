@@ -103,7 +103,7 @@ export class Expectation<T> {
     }
     if (this.#negated) {
       if (mismatch === undefined) {
-        this.#fail(`to match ${show(expected)}`);
+        this.#fail(`to match ${show(expected)}, received ${show(this.#actual)}`);
       }
       return;
     }
@@ -325,7 +325,10 @@ export function toMatchObject(value: unknown, expected: Record<string, unknown>)
   }
   const record = value as Record<string, unknown>;
   for (const [key, want] of Object.entries(expected)) {
-    if (!Object.is(record[key], want)) {
+    // Deep, not Object.is: nested values must compare structurally or the
+    // `.not` polarity in Expectation.toMatchObject silently passes on values
+    // that are in fact equal.
+    if (!isDeepStrictEqual(record[key], want)) {
       throw new AssertionError(
         `expected property "${key}" to be ${show(want)}, received ${show(record[key])}`,
       );

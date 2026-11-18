@@ -68,6 +68,16 @@ describe("releaseProblems", () => {
     expect(problems({ publishConfig: { ...OK, tag: 123 } })[0]).toContain("must be a string");
   });
 
+  it("rejects an empty publishConfig.tag on a pre-release, matching distTagFor", () => {
+    const result = problems({
+      version: "1.0.0-beta.1",
+      publishConfig: { ...OK, tag: "" },
+      constant: "1.0.0-beta.1",
+    });
+    expect(result).toHaveLength(1);
+    expect(result[0]).toContain("must not be empty");
+  });
+
   it("rejects provenance other than false", () => {
     expect(problems({ publishConfig: { ...OK, provenance: true } })[0]).toContain("provenance must be false");
     expect(problems({ publishConfig: { access: "public" } })[0]).toContain("provenance must be false");

@@ -64,4 +64,16 @@ describe("toMatchObject", () => {
       /expected NOT to match/,
     );
   });
+
+  it("compares nested values structurally, so .not cannot pass on equal values", () => {
+    const actual = { layer: { id: 1, name: "Solid" }, extra: true };
+    aeExpect(actual).toMatchObject({ layer: { id: 1, name: "Solid" } });
+    expect(() =>
+      aeExpect(actual).not.toMatchObject({ layer: { id: 1, name: "Solid" } }),
+    ).toThrow(/expected NOT to match/);
+    expect(() =>
+      aeExpect(actual).toMatchObject({ layer: { id: 1, name: "Other" } }),
+    ).toThrow(AssertionError);
+    aeExpect(actual).not.toMatchObject({ layer: { id: 1, name: "Other" } });
+  });
 });
