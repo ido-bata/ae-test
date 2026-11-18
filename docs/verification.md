@@ -66,6 +66,7 @@ is recorded then compared on a second run.
 | 2026-11-17 02:38 | `7a8efdd` (RC freeze) | `0.1.0-alpha.2` pinned | **failed at launch.** The pin predates ae-a8n #106: After Effects started two same-named processes, ownership stayed `unknown`, and the run failed closed with `HostNotOwnedError` — the designed refusal, not a defect in ae-test. Both instances were left running and quit by hand. See #52 and ae-a8n #105 |
 | 2026-11-17 15:51 | `381055f` (pin bump only) | `0.2.0` from npm | **failed in the spec.** Launch, ownership, render and teardown all worked on the real host; `expect(x).toBeDefined()` then failed on a defined value — an inverted matcher in ae-test itself, fixed as #65 |
 | 2026-11-17 16:2x | `d80a60c` (release head: ae-a8n `0.2.0` pin + #65) | `0.2.0` from npm | **pass.** Packed consumer, two runs: `--update-snapshots` recorded the baseline, then a plain run matched it. 1/1 each (~7.5 s), `cleanup.status=ok`, `quit=true`, no After Effects process left afterwards. No script-trust dialog appeared in either run |
+| 2026-11-18 00:2x | `613bba8` (1.0.0 RC freeze) | `0.2.0` from npm | **pass.** Same packed-consumer lane on the 1.0.0 tarball: two runs, snapshot recorded then compared, 1/1 each (~9.6 s on the compare run), `cleanup.status=ok`, `quit=true`, no After Effects process left afterwards |
 
 ### Local console-session lane
 
