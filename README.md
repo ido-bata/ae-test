@@ -130,6 +130,12 @@ When `conformance.json` is not ok, the CLI exits 1 even if every test
 passed — including when a `--grep`/`--capability` filter selected zero
 tests, which is never a green run.
 
+Records are per **test**, not per capability: `capabilityIds` declares what
+a test is evidence for, and a PASS means the test ran green on that host —
+it does not independently prove each declared ID. Capability coverage is
+the union of declarations across passing real-host tests; for per-operation
+guarantees, split the tests.
+
 When a catalog is supplied, its `compatibility` rows are honoured: a test
 whose every declared capability is incompatible with this OS/arch is
 reported `blocked` before launch, and each record flags capabilities that
