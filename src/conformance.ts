@@ -15,7 +15,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { closeSync, mkdirSync, openSync, readFileSync, readSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { release } from "node:os";
 
@@ -247,12 +247,8 @@ function hashBinaries(
       sha256: null,
     };
     try {
-      const bytes = readFileSync(absolute);
-      return {
-        ...entry,
-        bytes: bytes.byteLength,
-        sha256: createHash("sha256").update(bytes).digest("hex"),
-      };
+      const hashed = hashFileStreaming(absolute);
+      return { ...entry, bytes: hashed.bytes, sha256: hashed.sha256 };
     } catch {
       diagnostics.push({
         severity: "warning",
@@ -262,6 +258,32 @@ function hashBinaries(
       return entry;
     }
   });
+}
+
+/**
+ * SHA-256 of a file without holding it in memory: plugin binaries can be
+ * hundreds of megabytes, so the hash is fed in chunks through a reused
+ * buffer. Synchronous on purpose — `buildConformanceReport` is a sync API.
+ */
+function hashFileStreaming(path: string): { bytes: number; sha256: string } {
+  const CHUNK = 8 * 1024 * 1024;
+  const hash = createHash("sha256");
+  const fd = openSync(path, "r");
+  try {
+    const buffer = Buffer.allocUnsafe(CHUNK);
+    let bytes = 0;
+    for (;;) {
+      const read = readSync(fd, buffer, 0, CHUNK, null);
+      if (read === 0) {
+        break;
+      }
+      hash.update(buffer.subarray(0, read));
+      bytes += read;
+    }
+    return { bytes, sha256: hash.digest("hex") };
+  } finally {
+    closeSync(fd);
+  }
 }
 
 function matrixCells(records: readonly ConformanceRecord[]): ConformanceMatrixCell[] {
@@ -278,7 +300,12 @@ function matrixCells(records: readonly ConformanceRecord[]): ConformanceMatrixCe
   >();
   for (const record of records) {
     const aeVersion = record.aeVersion?.version ?? null;
-    const key = `${record.platform.os}${record.platform.osVersion}${record.platform.arch}${aeVersion ?? ""}`;
+    const key = JSON.stringify([
+      record.platform.os,
+      record.platform.osVersion,
+      record.platform.arch,
+      aeVersion,
+    ]);
     let cell = cells.get(key);
     if (cell === undefined) {
       cell = {

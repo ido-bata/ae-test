@@ -503,11 +503,17 @@ async function runOne(
   const testId = declaration.id.replace(/[^a-zA-Z0-9._-]+/g, "-");
 
   let session: AfterEffects | undefined;
+  // The session the fixture actually holds. Equal to `session` on every path
+  // except an interrupted launch, where `launchSession` awaited the launch to
+  // settlement (so teardown can close it) but the handle never reached the
+  // local — the fixture is the only place it exists.
+  let observedSession: AfterEffects | undefined;
   let status: TestStatus = "passed";
   let failure: TestFailure | undefined;
   let artifacts: Artifact[] = [];
   let cleanup: CleanupOutcome | undefined;
   let sessionFacts: SessionFacts | undefined;
+  let collectionError: string | undefined;
   let snapshots: SnapshotStore | undefined;
   let launched = false;
   let bodyStarted = false;
@@ -581,7 +587,10 @@ async function runOne(
         : error instanceof RunInterruptedError
           ? "interrupted"
           : "failed";
-    failure = { ...describeFailure(error, session), phase: launched ? "body" : "launch" };
+    failure = {
+      ...describeFailure(error, session ?? fixture.launchedSession()),
+      phase: launched ? "body" : "launch",
+    };
     // A body that outlived its budget keeps running — it cannot be
     // cancelled — so give it a bounded moment to settle before teardown
     // races its last operations, and record it when it does not.
@@ -604,15 +613,26 @@ async function runOne(
     // one, a failed launch — before artifacts are read and teardown begins.
     // Idempotent with the revoke in the catch above.
     fixture.revoke();
-    artifacts = [
-      ...fixture.collectArtifacts(session),
-      ...(snapshots?.artifacts ?? []),
-    ];
-    // Read before teardown: version, extension methods and the session's own
-    // identity are facts about the session that was used, and they disappear
-    // with it. Every read inside is guarded, so a fact nobody can measure is
-    // recorded as absent rather than replacing the test's own result.
-    sessionFacts = fixture.sessionFacts(session);
+    // Read before teardown clears the fixture's session: on an interrupted
+    // launch this is the only handle to the AE that did start.
+    observedSession = session ?? fixture.launchedSession();
+    // Collection is best-effort evidence: a failure here must never skip
+    // teardown, so it is captured and teardown runs regardless.
+    try {
+      artifacts = [
+        ...fixture.collectArtifacts(observedSession),
+        ...(snapshots?.artifacts ?? []),
+      ];
+      // Read before teardown: version, extension methods and the session's
+      // own identity are facts about the session that was used, and they
+      // disappear with it. Every read inside is guarded, so a fact nobody
+      // can measure is recorded as absent rather than replacing the
+      // test's own result.
+      sessionFacts = fixture.sessionFacts(observedSession);
+    } catch (error) {
+      collectionError =
+        error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+    }
     cleanup = await boundedTeardown(fixture, options);
   }
 
@@ -624,9 +644,25 @@ async function runOne(
       name: "CleanupError",
       message: `the test body passed, but teardown failed: ${cleanup.name}: ${cleanup.message}`,
       lastOperations:
-        session === undefined
+        observedSession === undefined
           ? []
-          : session.traceEvents.slice(-5).map((event) => `${event.op} (${event.status})`),
+          : observedSession.traceEvents.slice(-5).map((event) => `${event.op} (${event.status})`),
+      phase: "cleanup",
+    };
+  }
+
+  // Same rule for evidence collection: a test whose artifacts or session
+  // facts could not be gathered did not produce a complete record, so it
+  // is not a pass either.
+  if (status === "passed" && collectionError !== undefined) {
+    status = "failed";
+    failure = {
+      name: "ArtifactCollectionError",
+      message: `the test body passed, but collecting its evidence failed: ${collectionError}`,
+      lastOperations:
+        observedSession === undefined
+          ? []
+          : observedSession.traceEvents.slice(-5).map((event) => `${event.op} (${event.status})`),
       phase: "cleanup",
     };
   }

@@ -261,6 +261,9 @@ test("waits for a session", async ({ ae }) => { await ae.version(); });
     // no After Effects is left running for nobody.
     expect(summary.results[0]?.cleanup).toEqual({ status: "ok", quit: true });
     expect(transport.closed).toBe(true);
+    // The session did launch: the report must say so, or the evidence
+    // claims a run that never touched a host.
+    expect(summary.results[0]?.session?.launched).toBe(true);
   });
 });
 

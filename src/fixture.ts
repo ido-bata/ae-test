@@ -226,6 +226,18 @@ export class TestFixture {
   }
 
   /**
+   * The session `session()` resolved, even when the run was interrupted
+   * while the launch was in flight and the runner never received the
+   * handle. `undefined` until launch resolves and again after `teardown()`.
+   * The runner reads this so an interrupted launch still reports the
+   * session that actually ran — facts and artifacts are evidence about
+   * what happened, not about which variable held the handle.
+   */
+  launchedSession(): AfterEffects | undefined {
+    return this.#session;
+  }
+
+  /**
    * Always closes the session, even after a failure, and says how that went.
    *
    * The edits being discarded are this test's own, in an AE this run started
@@ -442,12 +454,17 @@ function collectRenders(root: string, base: string): Artifact[] {
       if (entry.isDirectory()) {
         walk(path);
       } else if (entry.name.toLowerCase().endsWith(".png")) {
-        found.push({
-          name: relativeArtifactName(path, base),
-          path,
-          bytes: statSync(path).size,
-          kind: "render",
-        });
+        try {
+          found.push({
+            name: relativeArtifactName(path, base),
+            path,
+            bytes: statSync(path).size,
+            kind: "render",
+          });
+        } catch {
+          // The file vanished between listing and stat — skip it rather
+          // than failing the whole collection (and the teardown after it).
+        }
       }
     }
   };
