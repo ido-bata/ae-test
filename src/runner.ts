@@ -513,6 +513,7 @@ async function runOne(
   let artifacts: Artifact[] = [];
   let cleanup: CleanupOutcome | undefined;
   let sessionFacts: SessionFacts | undefined;
+  let collectionError: string | undefined;
   let snapshots: SnapshotStore | undefined;
   let launched = false;
   let bodyStarted = false;
@@ -615,15 +616,23 @@ async function runOne(
     // Read before teardown clears the fixture's session: on an interrupted
     // launch this is the only handle to the AE that did start.
     observedSession = session ?? fixture.launchedSession();
-    artifacts = [
-      ...fixture.collectArtifacts(observedSession),
-      ...(snapshots?.artifacts ?? []),
-    ];
-    // Read before teardown: version, extension methods and the session's own
-    // identity are facts about the session that was used, and they disappear
-    // with it. Every read inside is guarded, so a fact nobody can measure is
-    // recorded as absent rather than replacing the test's own result.
-    sessionFacts = fixture.sessionFacts(observedSession);
+    // Collection is best-effort evidence: a failure here must never skip
+    // teardown, so it is captured and teardown runs regardless.
+    try {
+      artifacts = [
+        ...fixture.collectArtifacts(observedSession),
+        ...(snapshots?.artifacts ?? []),
+      ];
+      // Read before teardown: version, extension methods and the session's
+      // own identity are facts about the session that was used, and they
+      // disappear with it. Every read inside is guarded, so a fact nobody
+      // can measure is recorded as absent rather than replacing the
+      // test's own result.
+      sessionFacts = fixture.sessionFacts(observedSession);
+    } catch (error) {
+      collectionError =
+        error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+    }
     cleanup = await boundedTeardown(fixture, options);
   }
 
@@ -634,6 +643,22 @@ async function runOne(
     failure = {
       name: "CleanupError",
       message: `the test body passed, but teardown failed: ${cleanup.name}: ${cleanup.message}`,
+      lastOperations:
+        observedSession === undefined
+          ? []
+          : observedSession.traceEvents.slice(-5).map((event) => `${event.op} (${event.status})`),
+      phase: "cleanup",
+    };
+  }
+
+  // Same rule for evidence collection: a test whose artifacts or session
+  // facts could not be gathered did not produce a complete record, so it
+  // is not a pass either.
+  if (status === "passed" && collectionError !== undefined) {
+    status = "failed";
+    failure = {
+      name: "ArtifactCollectionError",
+      message: `the test body passed, but collecting its evidence failed: ${collectionError}`,
       lastOperations:
         observedSession === undefined
           ? []
