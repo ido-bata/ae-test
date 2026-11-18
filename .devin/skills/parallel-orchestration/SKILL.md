@@ -158,7 +158,7 @@ dependency / durable GitHub deliveryを使わない短命taskでは該当しな�
 
 ### Requirement provenance
 
-複雑・長期・多段委譲では [canonical requirement continuity](references/requirement-continuity.md) を適用する。正本・版の参照と受入条件の照合は省略しない。
+複雑・長期・多段委譲とChatGPT等による着手・再開・監督指示の作成では [canonical requirement continuity](references/requirement-continuity.md) を適用する。正本・版の参照、検証stageと受入条件の照合を省略しない。
 
 `budget` にはresource / cost / timeoutに加えて、childがさらにspawnできる深さと数の上限を含める。上限のないrecursive spawn（fork bomb）やunbounded costを作らない。
 

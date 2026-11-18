@@ -41,6 +41,7 @@
 - first meaningful durable commit後はcanonical remote publication + PR作成を行う。active/incomplete implementationではDraft、readiness条件を満たしていればReady for reviewとする
 - Draftは未完了作業の一時状態に限定し、ticket/release PRがreadiness条件を満たしたら速やかにReady for reviewへ遷移する。PR作成時点ですでに条件を満たす場合は最初からReadyで作成する
 - release branchにmeaningful differenceが入ったらDraft release PRを維持し、release readiness条件を満たした時点でReady for reviewへ遷移する
+- release branchは開発中の統合集積地点であって常時release-readyである必要はない。ticketの自律landing時にfull CI・配布物build・GUI/実機受入・本番deployを一律の必須条件にしない。重いrelease-wide検証はcandidate freeze後の対象SHAで実施する（ADR-0036）。
 - readiness/quality gateを満たしたticket PRは追加のuser merge authorizationを待たず、dependency順にtarget release trunkへ自律landingする
 - ticketがtarget release trunkへlandしたらlinked Issueを明示closeし、安全ならticket branchを削除する
 - recovery/completion時にPRなしticket branch、Ready未landing PR、land済みopen Issue、merged後残存branchをreconcileする
@@ -117,7 +118,9 @@ Cloudflareを利用するprojectでは、Cloudflare control plane / resource API
 
 - project-specific adaptive quality profileをcompileする
 - validation evidenceをcurrent artifact/SHAへbindする
-- worker / integration / release gateの責務を分ける
+- worker / ticket integration / release candidate / human acceptance / publicationの責務とevidence状態を分ける（ADR-0036）。高コスト検証の存在と毎ticketでの実行を混同しない
+- native/GUI/実機受入は原則まとまったrelease candidateで行い、未実施・延期を成功扱いしない。不可逆操作・security境界等の事前防御が必要な変更に限りrisk根拠付きのearly gateを認める
+- release trunkへの各pushでフルrelease gateやdeployを自動起動しない。CI・hook・branch protectionにstage-specific triggerとrequired checksをcompileする
 - fixed universal required status check名は前提にしない
 
 ## Constitutional mapping

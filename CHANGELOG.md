@@ -1,5 +1,37 @@
 # Changelog
 
+## 1.0.0
+
+First stable release, published under the `latest` dist-tag. Depends on
+`@ido-bata/ae-a8n` `0.2.0` exactly.
+
+The public contract is frozen by [docs/api.md](docs/api.md): the export
+surface, config/report/conformance/diff formats, CLI exit codes, timeout
+and interruption semantics, context revocation, and the semver rules
+(breaking changes are major-only from here). Everything since
+`0.1.0-alpha.0` — the `0.2.0-beta.*` entries below — is included; breaking
+changes collected during the beta period are listed in the
+`0.2.0-beta.1`/`0.2.0-beta.2` sections with their migration notes.
+
+Support statement (docs/api.md is canonical): macOS arm64 + After Effects
+2026 has manual real-host evidence; Windows is unsupported; other AE
+versions and OSes are unverified. Fake-host CI green is harness evidence,
+not an After Effects claim.
+
+### Breaking changes since the betas
+
+- `SnapshotStore.matched` and `SnapshotStore.updating` getters were
+  removed (#102): they were dead state — `matched` counted update-mode
+  writes as matches — and nothing in the documented contract used them.
+  Consumers that read them must track outcomes from `match()` results
+  instead.
+
+### Fixes carried into 1.0.0
+
+- `expect(x).not.toMatchObject(...)` now honours negation (#100), and the
+  shared matcher compares property values structurally, so a `.not`
+  assertion can no longer pass on values that are in fact equal (#106).
+
 ## 0.2.0-beta.2
 
 Depends on `@ido-bata/ae-a8n` `0.2.0` exactly. Second beta on the 0.2

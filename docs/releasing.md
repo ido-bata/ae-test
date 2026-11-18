@@ -1,6 +1,12 @@
 # Releasing to npm
 
-`@ido-bata/ae-test` is published under the `next` dist-tag.
+`@ido-bata/ae-test` publishes under the dist-tag the manifest declares:
+`next` for a pre-release (`publishConfig.tag: "next"`), `latest` for a
+stable version (`publishConfig.tag` unset or `"latest"`).
+`scripts/check-release.js` and `scripts/stage-publish.js` enforce the
+pairing in both directions — a pre-release never reaches `latest`, and a
+stable version never sits on `next` — so `npm install @ido-bata/ae-test`
+always means "the supported release".
 
 - `0.1.0-alpha.0` is published **by a person, with 2FA**, from the tarball the
   `publish` workflow built and verified.
@@ -38,16 +44,12 @@ documented there.
 
 ## What stops an accidental or double publish
 
-The repository is private and the organisation is on GitHub Free. On that
-plan environments cannot be configured for private repositories
-([managing environments][gh-manage]), required reviewers and wait timers need
-a public repository on every plan below Enterprise ([environments][gh-env]),
-and branch protection and rulesets are unavailable. A workflow that names an
-environment that does not exist creates it "with no protection rules", so an
-`environment: npm` line would look like a gate without being one. The
-workflow names no environment, and the conditions live in
+The repository is public, so GitHub environments with required reviewers
+are technically available — but the publish decision deliberately stays in
 [`scripts/publish-gate.js`](../scripts/publish-gate.js), tested in
-`test/publish-gate.test.ts`:
+`test/publish-gate.test.ts`, rather than in settings: a gate that lives in
+the repository is reviewable, diffable, and identical on every run. Moving
+it to an environment is a separate reviewed change. The conditions:
 
 | Condition | Otherwise |
 | --- | --- |
@@ -64,17 +66,20 @@ the exact version, pushing the tag, and approving the staged version with 2FA
 on npm — and no one of them publishes anything alone.
 
 [`scripts/check-release.js`](../scripts/check-release.js) also holds the
-release surface: a pre-release never goes to `latest`, `access` is public,
-provenance is off, a tag is exactly `v<version>`, and `AE_TEST_VERSION`
-equals the package version.
+release surface: a pre-release never goes to `latest` and a stable version
+goes nowhere else, `access` is public, provenance is off by decision (see
+below), a tag is exactly `v<version>`, and `AE_TEST_VERSION`
+equals the package version. Its rules are pinned by
+`test/check-release.test.ts`.
 
 **What this does not protect against.** The gate runs inside the workflow.
 Someone with write access can edit the workflow on a branch and tag that; the
 npm trusted publisher checks the repository and workflow file name, not the
 ref. Staging limits the damage — nothing is installable until a person
-approves it with 2FA — but the server-side controls (an `npm` environment
-limited to `v*` tags, a tag ruleset, required reviewers) need GitHub Team,
-Enterprise, or a public repository. Those are decisions for the owner.
+approves it with 2FA — but there is no server-side approval gate. Now that
+the repository is public, an `npm` environment limited to `v*` tags with
+required reviewers would add one; that is a decision for the owner, recorded
+here so it is not forgotten.
 
 ## The tarball is reproducible
 
@@ -161,8 +166,10 @@ Pinned and checked by [`scripts/stage-publish.js`](../scripts/stage-publish.js)
 
 - npm CLI `NPM_CLI_VERSION` (11.19.1), installed in both jobs and compared
   exactly. `npm stage` needs 11.15.0 or later.
-- Dist-tag `next`, passed explicitly. A staged package's tag cannot be
-  changed later.
+- The dist-tag comes from the manifest (`publishConfig.tag`, or `latest`
+  when unset), passed explicitly — `next` for a pre-release, `latest` for a
+  stable version. `scripts/check-release.js` refuses the wrong pairing in
+  both directions. A staged package's tag cannot be changed later.
 - The uploaded tarball is the one `verify` built and the gate checked (sha1
   before sending, and again from npm's report).
 - A version already on npm is not staged (the gate), and the registry refuses
@@ -193,16 +200,17 @@ Steps:
 6. Review and approve, with 2FA:
 
    ```bash
-   npm stage view <stage-id>         # version 0.1.0-alpha.1, tag next
+   npm stage view <stage-id>         # version <version>, tag <next|latest>
    npm stage download <stage-id>     # prints the shasum: must equal the run's
-   npm stage approve <stage-id>      # 2FA; publishes to next
+   npm stage approve <stage-id>      # 2FA; publishes under that tag
    ```
 
    If anything is off: `npm stage reject <stage-id>` (2FA). The version
    number stays taken while staged; after a rejection, check
    `npm stage list` before reusing it.
-7. Check: `npm view @ido-bata/ae-test@next version` and
-   `npm view @ido-bata/ae-test@0.1.0-alpha.1 dist.shasum`.
+7. Check: `npm view @ido-bata/ae-test@<tag> version` (the tag is `next` for
+   a pre-release, `latest` for a stable) and
+   `npm view @ido-bata/ae-test@<version> dist.shasum`.
 8. Delete `NPM_PUBLISH_VERSION`.
 9. Once staging has worked: package Settings → Publishing access →
    **Require two-factor authentication and disallow tokens**.
@@ -216,16 +224,47 @@ Not verified before the first real use: staging through OIDC against the
 real registry. ae-a8n's first staged release (ido-bata/ae-a8n#14) exercises
 it first; ae-test should follow only after that has worked.
 
+## GitHub Packages mirror (optional, post-publish)
+
+npmjs.com is the canonical registry. GitHub Packages (`npm.pkg.github.com`)
+is an additional mirror so the package appears on the repository's Packages
+tab; nothing installs from it by default.
+
+After a version is live on npmjs — i.e. after `npm stage approve` has made
+it installable — mirror it with the `sync-github-packages` workflow:
+
+```bash
+gh workflow run publish.yml -f github_packages_version=<version>
+```
+
+or locally, with a token that has `write:packages` configured for
+`npm.pkg.github.com`:
+
+```bash
+node scripts/sync-github-packages.js <version>
+```
+
+`scripts/sync-github-packages.js` refuses a version that is not on npmjs,
+skips one already mirrored with matching `dist.integrity` (safe to re-run;
+a divergent copy fails instead of skipping), and publishes the exact
+`npm pack` tarball of the npmjs version, so both registries serve identical
+bytes. It never runs on tag push and never blocks the npmjs flow. The first
+publish links the package to this repository for the Packages tab; check the
+linkage once after the first mirror.
+
 ## Not here yet
 
-- Provenance: npm does not generate it for private repositories
-  ([GitHub changelog][gh-prov]). It goes with making the repository public.
-- `repository`, `homepage` and the README's relative links point to the
-  private repository, so they are 404 on npmjs.com for everyone outside the
-  organisation.
+- Provenance: the repository is public now, so npm could attest the
+  staged publish ([GitHub changelog][gh-prov] no longer blocks it). It
+  stays off by decision — `publishConfig.provenance` is `false` and
+  `check-release.js` fails otherwise. Enabling it is its own reviewed
+  change (trusted-publisher config plus the manifest flag), not a side
+  effect of a version bump.
+- A server-side approval gate: an `npm` environment limited to `v*` tags
+  with required reviewers is available on a public repository. The publish
+  decision currently lives in `publish-gate.js`; moving or duplicating it
+  into an environment is a separate reviewed change.
 
-[gh-env]: https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments
-[gh-manage]: https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments
 [npm-tp]: https://docs.npmjs.com/trusted-publishers
 [npm-staged]: https://docs.npmjs.com/staged-publishing
 [npm-stage]: https://docs.npmjs.com/cli/v11/commands/npm-stage

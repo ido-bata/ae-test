@@ -1,9 +1,17 @@
 ---
 name: policy-evaluation
 description: Constitution / Operating Model / Practice / Skillがorganizational outcomeとinvariantを維持するかを、formal model・deterministic checks・cold eval・grader controls・context budgetで検証する時に使用する。
+metadata:
+  requires-skills: system-quality
 ---
 
 # Policy Evaluation
+
+## 成果物に対する評価
+
+[system-quality](../system-quality/SKILL.md) の排除能力と改善能力を、回答形式とは別に評価する。文言・record検査はその形式だけを保証する。既知違反を含む実コードを実際のgateへ投入し、正当ケースも通ることを確認する。さらに禁止事項を満たすが改善可能な実プロジェクトで、要求保存と改善関係を実行証拠へ対応付ける。cold reviewは補助であり、最適性や強制の代替ではない。
+
+検査器の既知ケース識別、違反クラスの完全性、要求充足、Optimalは別の主張である。suiteやoracleを候補に合わせて弱めず、信頼されたrevisionとの差を審査する。portableな実コードchallengeはsystem-qualityに同梱する。
 
 Organization policyは文章が存在するだけでは完成しない。Constitutional property、current Operating Model、replaceable Practice、Skill judgmentを区別して評価する。
 
@@ -238,7 +246,7 @@ reviewerはartifactをfreshに読み、実際に存在する結果から評価�
 
 progressive disclosureは構造だけでなく、always-loaded context量でも監視する。
 
-このrepositoryでは `bash evals/policy-evaluation/context-budget.sh` をdeterministic regression checkとして実行する。checked-in `evals/policy-evaluation/context-budget-baseline.tsv` とroot instruction files / total always-on instructions / 各conditional `skills/*/SKILL.md` を比較し、各surfaceのbyte growthがbaselineの10%または512 bytesの大きい方を超えた場合はFAILする。outputはmachine-readable TSVとし、intentionalなbaseline更新はreview対象にする。
+このrepositoryでは `bun evals/policy-evaluation/context-budget.mts` をdeterministic regression checkとして実行する。checked-in `evals/policy-evaluation/context-budget-baseline.tsv` とroot instruction files / total always-on instructions / 各conditional `skills/*/SKILL.md` を比較し、各surfaceのbyte growthがbaselineの10%または512 bytesの大きい方を超えた場合はFAILする。outputはmachine-readable TSVとし、intentionalなbaseline更新はreview対象にする。
 
 初期化・policy再構成・root agent fileの大幅変更時に最低限確認する:
 
@@ -388,7 +396,7 @@ policy change完了時は、該当する範囲で次を示す。
 - latent eval結果と使用したmodel/runtime identity when known
 - current policy revision / SHA
 - evalで確認できないknown limitation
-- `bash evals/policy-evaluation/context-budget.sh` の結果とcontext budgetへの影響
+- `bun evals/policy-evaluation/context-budget.mts` の結果とcontext budgetへの影響
 - execution profileの変更有無
 
 latent evalを実行できない環境では、未実施を明示し、deterministic controlsだけでlatent behaviorまで証明したと報告しない。

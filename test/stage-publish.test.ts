@@ -35,7 +35,10 @@ const stage = (await import(pathToFileURL(scriptPath).href)) as {
     realpath?: (path: string) => string;
   }) => Resolved;
   MINIMUM_NPM: string;
-  DIST_TAG: string;
+  distTagFor: (manifest: { publishConfig?: { tag?: unknown } }) => string | null;
+  checkDistTag: (manifest: { version: string; publishConfig?: { tag?: unknown } }) =>
+    | { ok: true; tag: string }
+    | { ok: false; error: string };
 };
 
 /** The real npm CLI, found as the script finds it. */
@@ -67,6 +70,24 @@ describe("versionAtLeast", () => {
     ["garbage", false],
   ])("%s ≥ 11.15.0 is %s", (version, expected) => {
     expect(stage.versionAtLeast(version, stage.MINIMUM_NPM)).toBe(expected);
+  });
+});
+
+describe("distTagFor / checkDistTag", () => {
+  it("defaults an absent publishConfig.tag to latest", () => {
+    expect(stage.distTagFor({ publishConfig: {} })).toBe("latest");
+    expect(stage.distTagFor({})).toBe("latest");
+    expect(stage.checkDistTag({ version: "1.0.0", publishConfig: {} })).toEqual({ ok: true, tag: "latest" });
+  });
+
+  it("rejects an explicitly present but unusable tag instead of defaulting it", () => {
+    // `?? "latest"` used to turn `tag: null` into latest here while
+    // check-release.js rejected the same manifest; the shared policy must
+    // agree with the gate.
+    for (const tag of [null, 42, "", {}]) {
+      expect(stage.distTagFor({ publishConfig: { tag } })).toBeNull();
+      expect(stage.checkDistTag({ version: "1.0.0", publishConfig: { tag } }).ok).toBe(false);
+    }
   });
 });
 
@@ -214,14 +235,18 @@ describe("staging with the real npm CLI", () => {
   let uploads: Upload[];
   let answer: { status: number; body: string };
 
-  function makePackage(publishConfigTag: string): void {
+  function makePackage(publishConfigTag: string | undefined, version = VERSION): void {
     writeFileSync(
       join(pkg, "package.json"),
       JSON.stringify({
         name: NAME,
-        version: VERSION,
+        version,
         license: "MIT",
-        publishConfig: { access: "public", tag: publishConfigTag, provenance: false },
+        publishConfig: {
+          access: "public",
+          ...(publishConfigTag === undefined ? {} : { tag: publishConfigTag }),
+          provenance: false,
+        },
       }),
     );
     writeFileSync(join(pkg, "index.js"), "export {};\n");
@@ -229,6 +254,7 @@ describe("staging with the real npm CLI", () => {
 
   async function pack(): Promise<void> {
     const out = join(dir, "out");
+    rmSync(out, { recursive: true, force: true });
     mkdirSync(out, { recursive: true });
     await run(process.execPath, [npmCli(), "pack", "--pack-destination", out, ...npmIsolation()], { cwd: pkg });
     const [file] = readdirSync(out).filter((f) => f.endsWith(".tgz"));
@@ -354,11 +380,46 @@ describe("staging with the real npm CLI", () => {
     expect(uploads).toEqual([]);
   });
 
-  it("refuses when package.json would not publish to next", async () => {
+  it("refuses a pre-release that would publish to latest", async () => {
     makePackage("latest");
     const result = await stageIt();
     expect(result.code).toBe(1);
-    expect(result.stderr).toContain("publishConfig.tag is latest");
+    expect(result.stderr).toContain("must not publish to latest");
+    expect(uploads).toEqual([]);
+  });
+
+  it("refuses a pre-release with no publishConfig.tag (npm would default to latest)", async () => {
+    makePackage(undefined);
+    const result = await stageIt();
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("must not publish to latest");
+    expect(uploads).toEqual([]);
+  });
+
+  it("stages a stable version to latest when publishConfig.tag is unset", async () => {
+    const stable = "1.0.0";
+    makePackage(undefined, stable);
+    await pack();
+    const result = await stageIt();
+    expect(result.code).toBe(0);
+    expect(uploads).toEqual([
+      {
+        method: "POST",
+        url: "/-/stage/package/@ido-bata%2fae-test",
+        distTags: { latest: stable },
+        versions: [stable],
+        attachmentSha1: shasum,
+      },
+    ]);
+    expect(result.summary).toContain("dist-tag `latest`");
+  });
+
+  it("refuses a stable version that would publish to next", async () => {
+    makePackage("next", "1.0.0");
+    await pack();
+    const result = await stageIt();
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("stable 1.0.0 must publish to latest");
     expect(uploads).toEqual([]);
   });
 

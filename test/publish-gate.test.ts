@@ -391,6 +391,14 @@ function lf(text: string): string {
 describe("the publish workflow", () => {
   const workflow = lf(readFileSync(new URL("../.github/workflows/publish.yml", import.meta.url), "utf-8"));
   const stageJob = workflow.slice(workflow.indexOf("\n  stage:"));
+  const syncJob = workflow.slice(workflow.indexOf("\n  sync-github-packages:"));
+  // Everything before the GitHub Packages mirror job is the npmjs publish
+  // path: it must stay token-free (Trusted Publishing only).
+  const npmjsPath = workflow
+    .slice(0, workflow.indexOf("\n  sync-github-packages:"))
+    .split("\n")
+    .filter((line) => !line.trimStart().startsWith("#"))
+    .join("\n");
   const code = workflow
     .split("\n")
     .filter((line) => !line.trimStart().startsWith("#"))
@@ -399,7 +407,20 @@ describe("the publish workflow", () => {
   it("sends anything to npm only on the gate's word", () => {
     expect(stageJob).toMatch(/^\s+if: needs\.verify\.outputs\.publish == 'true'$/m);
     expect(workflow).toContain("NPM_PUBLISH_VERSION: ${{ vars.NPM_PUBLISH_VERSION }}");
-    expect(code).not.toMatch(/NPM_PUBLISH_ENABLED|NPM_TOKEN|NODE_AUTH_TOKEN|secrets\./);
+    expect(npmjsPath).not.toMatch(/NPM_PUBLISH_ENABLED|NPM_TOKEN|NODE_AUTH_TOKEN|secrets\./);
+  });
+
+  it("mirrors to GitHub Packages only on manual dispatch, with GITHUB_TOKEN", () => {
+    // A different registry with a different auth contract: GITHUB_TOKEN with
+    // packages:write is the designed credential there, and the job exists
+    // only when a human names an already-published version.
+    expect(syncJob).toMatch(
+      /^\s+if: github\.event_name == 'workflow_dispatch' && inputs\.github_packages_version != ''$/m,
+    );
+    expect(syncJob).toContain("packages: write");
+    expect(syncJob).toContain("secrets.GITHUB_TOKEN");
+    expect(syncJob).toContain("node scripts/sync-github-packages.js");
+    expect(syncJob).not.toContain("--dry-run");
   });
 
   it("stages and never publishes directly", () => {
@@ -412,13 +433,13 @@ describe("the publish workflow", () => {
     expect(stageJob).toContain("EXPECTED_SHASUM: ${{ needs.verify.outputs.shasum }}");
   });
 
-  it("pins one npm CLI, new enough for npm stage, in both jobs", () => {
+  it("pins one npm CLI, new enough for npm stage, in every job that runs npm", () => {
     const pinned = /NPM_CLI_VERSION: "(\d+\.\d+\.\d+)"/.exec(workflow)?.[1];
     expect(pinned).toBeDefined();
     expect(stage.versionAtLeast(pinned ?? "0.0.0", stage.MINIMUM_NPM)).toBe(true);
-    expect(workflow.match(/- name: Pin the npm CLI/g)).toHaveLength(2);
-    // ...and hands that exact npm to stage-publish.js, which runs it without a shell.
-    expect(workflow.match(/echo "NPM_CLI_JS=\$cli" >> "\$GITHUB_ENV"/g)).toHaveLength(2);
+    expect(workflow.match(/- name: Pin the npm CLI/g)).toHaveLength(3);
+    // ...and hands that exact npm to the scripts, which run it without a shell.
+    expect(workflow.match(/echo "NPM_CLI_JS=\$cli" >> "\$GITHUB_ENV"/g)).toHaveLength(3);
     expect(workflow.indexOf("Pin the npm CLI", workflow.indexOf("\n  stage:"))).toBeLessThan(
       workflow.indexOf("stage-publish.js", workflow.indexOf("\n  stage:")),
     );

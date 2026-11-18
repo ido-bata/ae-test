@@ -54,6 +54,7 @@ function result(
     artifacts: [],
     capabilities: [],
     session: {
+      launched: true,
       uid: 501,
       asid: 1,
       ae: { version: "26.5", build: "89" },
@@ -73,6 +74,7 @@ function result(
 
 function realSession(): NonNullable<TestResult["session"]> {
   return {
+    launched: true,
     uid: 501,
     asid: 1,
     ae: { version: "26.5", build: "89" },
@@ -286,6 +288,29 @@ describe("conformance classification", () => {
     expect(report.ok).toBe(false);
   });
 
+  it("does not treat session facts from a failed launch as a launched session", () => {
+    // The runner attaches session facts even when the launch failed; only
+    // `launched: false` keeps that from reading as host evidence.
+    const report = reportFor([
+      result({
+        status: "failed",
+        session: {
+          launched: false,
+          uid: 501,
+          asid: 1,
+          ae: null,
+          extensions: [],
+          fixtures: [],
+          transport: "script-invocation",
+        },
+      }),
+    ]);
+    const record = report.records[0];
+
+    expect(record?.environment.session).toBe("not-launched");
+    expect(record?.environment.transportKind).toBeNull();
+  });
+
   it("marks a capability missing from the catalog as unknown, not fake-only", () => {
     const catalogPath = join(dir, "catalog.json");
     writeFileSync(
@@ -357,6 +382,57 @@ describe("environment compatibility", () => {
     ).toBe("incompatible");
   });
 
+  it("treats a missing or null row as no constraint, not a crash", () => {
+    expect(evaluateCompatibility(null, { os: "darwin", arch: "arm64" }).verdict).toBe(
+      "compatible",
+    );
+    expect(evaluateCompatibility(undefined, { os: "darwin", arch: "arm64" }).verdict).toBe(
+      "compatible",
+    );
+  });
+
+  it("reports a present-but-unusable constraint as unknown, not compatible", () => {
+    const verdict = evaluateCompatibility(
+      { compatibility: { os: "darwin" } },
+      { os: "win32", arch: "arm64" },
+    );
+    expect(verdict.verdict).toBe("unknown");
+    expect(verdict.reasons.join(" ")).toContain("os constraint");
+  });
+
+  it("treats an observed version shorter than the pattern as unknown, not incompatible", () => {
+    const precise = { compatibility: { aeVersions: ["26.0.0"] } };
+    expect(
+      evaluateCompatibility(precise, { os: "darwin", arch: "arm64", aeVersion: "26.0" })
+        .verdict,
+    ).toBe("unknown");
+    // Wildcards still cover the unobserved segments.
+    const wildcard = { compatibility: { aeVersions: ["26.x"] } };
+    expect(
+      evaluateCompatibility(wildcard, { os: "darwin", arch: "arm64", aeVersion: "26" })
+        .verdict,
+    ).toBe("compatible");
+  });
+
+  it("does not block on a declaration that mixes known-incompatible and unknown IDs", () => {
+    const catalog = loadCapabilityCatalog(
+      resolve(import.meta.dirname, "..", "fixtures", "conformance", "capability-catalog.json"),
+    );
+    const win32Only = {
+      ...catalog,
+      records: new Map([
+        ["ae.operation.project.open", { compatibility: { os: ["win32"] } }],
+      ]),
+    };
+    expect(
+      environmentBlockReason(
+        ["ae.operation.project.open", "ae.operation.not.in.catalog"],
+        win32Only,
+        { os: "darwin", arch: "arm64" },
+      ),
+    ).toBeUndefined();
+  });
+
   it("treats an unobserved AE version as unknown, not incompatible", () => {
     const verdict = evaluateCompatibility(row, { os: "darwin", arch: "arm64" });
     expect(verdict.verdict).toBe("unknown");
@@ -422,6 +498,7 @@ describe("environment compatibility", () => {
         result({
           capabilities: ["ae.operation.render.frame"],
           session: {
+            launched: true,
             uid: 501,
             asid: 1,
             ae: { version: "26.0.0" },
@@ -478,6 +555,7 @@ describe("evidence aggregation", () => {
       result({
         id: "spec#2",
         session: {
+          launched: true,
           uid: 501,
           asid: 1,
           ae: { version: "27.1", build: "3" },

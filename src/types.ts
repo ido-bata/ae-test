@@ -10,6 +10,15 @@ import type { AfterEffects, RenderedFrame, TraceEvent } from "@ido-bata/ae-a8n";
 import type { AsyncExpectation, Expectation, RenderedFrameExpectation } from "./expect.js";
 
 /**
+ * Transport kinds ae-a8n reports through the capability handshake. Only the
+ * built-in script transport is a real After Effects process; the in-process
+ * fake is fake evidence. Single source for the literals every consumer
+ * compares against — a rename upstream must fail here, not drift silently.
+ */
+export const REAL_TRANSPORT_KIND = "script-invocation";
+export const FAKE_TRANSPORT_KIND = "fake-in-process";
+
+/**
  * "blocked": the test was not run, because an earlier test left After
  * Effects in a state nobody can vouch for, or the run was interrupted
  * first. Not a pass, and not a failure of this test's own code.
@@ -124,6 +133,12 @@ export type FixtureDigest = {
  * is also the answer on any platform other than macOS.
  */
 export type SessionFacts = {
+  /**
+   * Whether a host session actually started. Facts are recorded even when
+   * the launch itself failed — `launched: false` with `ae: null` is the
+   * honest shape, and consumers must not read fact presence as a session.
+   */
+  readonly launched: boolean;
   readonly uid: number | null;
   readonly asid: number | null;
   /** The host's own report about itself, from the launch probe. */

@@ -22,19 +22,26 @@ name: publish
 # - The npm CLI is pinned (NPM_CLI_VERSION) in both jobs: `npm stage` needs
 #   11.15.0 or later, and the CLI that stages is the CLI that dry-ran.
 #
-# There is no `environment:` with required reviewers: on GitHub Free those are
-# not available to private repositories, and a job naming an environment that
-# does not exist creates it, unprotected — a gate that only looks like one.
+# There is no `environment:` with required reviewers: the publish decision
+# lives in scripts/publish-gate.js, where it is tested and versioned. An
+# environment is now possible (the repository is public) but adopting one is
+# a separate reviewed change, not a side effect of this workflow.
 # docs/releasing.md has the whole procedure and what this does not protect.
 #
-# Provenance is off: npm does not generate it for private source
-# repositories. Enabling it belongs with making the repository public.
+# Provenance is off by decision (publishConfig.provenance=false, enforced by
+# scripts/check-release.js). The repository is public now, so npm could
+# attest; enabling it is its own reviewed change.
 
 on:
   push:
     tags:
       - "v*"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      github_packages_version:
+        description: "npmjs version to mirror to GitHub Packages (empty = no sync)"
+        required: false
+        default: ""
   pull_request:
     paths:
       - ".github/workflows/publish.yml"
@@ -67,7 +74,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install toolchain
-        uses: jdx/mise-action@v2
+        uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac # v2
         with:
           version: 2026.9.12
           install: true
@@ -166,7 +173,7 @@ jobs:
           persist-credentials: false
 
       - name: Install toolchain
-        uses: jdx/mise-action@v2
+        uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac # v2
         with:
           version: 2026.9.12
           install: true
@@ -193,8 +200,56 @@ jobs:
           name: package
           path: ${{ runner.temp }}/package
 
-      - name: Stage for approval (dist-tag next)
+      - name: Stage for approval
         id: stage
         env:
           EXPECTED_SHASUM: ${{ needs.verify.outputs.shasum }}
         run: mise exec -- node scripts/stage-publish.js "$RUNNER_TEMP"/package/*.tgz --expect-shasum "$EXPECTED_SHASUM"
+
+  # Mirrors an already-published npmjs version to GitHub Packages (issue
+  # #23). Manual dispatch only, never on tag push: npmjs stays canonical and
+  # a version that is not live there is refused by the script. Idempotent —
+  # an already-mirrored version is a no-op.
+  sync-github-packages:
+    if: github.event_name == 'workflow_dispatch' && inputs.github_packages_version != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Install toolchain
+        uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac # v2
+        with:
+          version: 2026.9.12
+          install: true
+
+      - name: Pin the npm CLI
+        run: |
+          mise exec -- npm install -g "npm@$NPM_CLI_VERSION"
+          actual=$(mise exec -- npm --version)
+          if [ "$actual" != "$NPM_CLI_VERSION" ]; then
+            echo "::error::npm is $actual after installing $NPM_CLI_VERSION"
+            exit 1
+          fi
+          cli="$(mise exec -- npm root -g)/npm/bin/npm-cli.js"
+          if [ "$(mise exec -- node "$cli" --version)" != "$NPM_CLI_VERSION" ]; then
+            echo "::error::$cli is not npm $NPM_CLI_VERSION"
+            exit 1
+          fi
+          echo "NPM_CLI_JS=$cli" >> "$GITHUB_ENV"
+
+      - name: Authenticate to GitHub Packages
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '//npm.pkg.github.com/:_authToken=%s\n' "$NODE_AUTH_TOKEN" >> "$HOME/.npmrc"
+
+      - name: Mirror the published version
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_PACKAGES_VERSION: ${{ inputs.github_packages_version }}
+        run: mise exec -- node scripts/sync-github-packages.js "$GITHUB_PACKAGES_VERSION"

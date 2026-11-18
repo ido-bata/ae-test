@@ -56,6 +56,7 @@ export type {
   ConformanceCatalogSummary,
   ConformanceClassification,
   ConformanceDiagnostic,
+  ConformanceDiagnosticCode,
   ConformanceHost,
   ConformanceMatrixCell,
   ConformanceRecord,
@@ -96,6 +97,8 @@ export {
   formatSummary,
   exitCodeFor,
 } from "./report.js";
+
+export { FAKE_TRANSPORT_KIND, REAL_TRANSPORT_KIND } from "./types.js";
 
 export type {
   Artifact,

@@ -1,15 +1,17 @@
 ---
 name: skill-selection
 description: projectの初期化や再整備で、どのAgent Skillを導入するかを決める時に使用する。必要な能力を判定し、project-initの能力一覧と候補記録、さらに外部の探索から候補を評価して、能力ごとに担当を決め、project-localに導入してlockと採否を記録する。
+metadata:
+  requires-skills: system-quality
 ---
 
 # Skill Selection
 
 Skillの導入を「良さそうなものを足す」作業にしない。目的は、projectに必要な能力ごとに、衝突しない担当を1つずつ決めることである。
 
-## Skillはガードレールである
+## Skillの誘導と実行上の強制を区別する
 
-Skillは、agentが的外れな方向へ失敗するのを防ぐガードレールとして導入する。「当てはまるかもしれないから使う」ものではない。
+Skillは判断と作業を支援する指示であり、遵守や品質を強制する境界ではない。実成果物の制約と受理経路は別に成立させる。「当てはまるかもしれないから使う」ものではない。
 
 - 発火する場面が明確で、その場面に**ちょうど当てはまる**Skillだけを採用する。少しでも関係しそうなら起動する、という広いtriggerのSkillは採らない。
 - 手順の量は、防ぐ失敗の大きさに比例させる。短い作業を長い儀式に変えるSkill（小さな修正にも毎回TDDや対話式のbrainstormingを強制するもの等）は採らないか、条件を絞った起動にする。
@@ -19,6 +21,8 @@ project-initには、選定の材料となる2つの表がある。
 
 - `catalog/capabilities.tsv` — 能力の一覧。`scope` が `single` の能力は担当を1つに絞り、`multi` は併用してよい。`needed_when` はその能力が必要になる条件。
 - `catalog/candidates.tsv` — 評価済みの候補記録。許可リストではない。前回までの評価結果をまとめたキャッシュであり、記録にないSkillも探索して評価してよい。
+
+全体品質の設計・維持には [system-quality](../system-quality/SKILL.md) を選定する。必要な参照とscriptsも配布物として確認し、Skillの名前が存在することを能力成立と扱わない。
 
 ## 1. 必要な能力を判定する
 
@@ -54,11 +58,13 @@ repositoryの実際の状態から、各能力の `needed_when` が成り立つ�
 
 ## 4. 導入する
 
+frontmatterの `metadata.requires-skills`（空白区切りSkill名）を確認し、推移的な依存も同じ導入で解決する。Skill名だけが一致する未評価の別実装を依存充足とみなさない。project-initの設計・判断・品質・評価・選定Skillにはsystem-qualityが必要。例: `bunx skills add rebuildup/project-init --skill engineering-decisions system-quality --copy`。導入後に実fileと相対参照が揃っていることを検証し、missing dependencyを完了にしない。
+
 - project-localに入れる。`--global` は使わない。
 - packを丸ごと入れず、`bunx skills add <source> --skill <name>` で個別に入れる。Web向け例: `bunx skills add GoogleChrome/modern-web-guidance --skill modern-web-guidance --copy`（revision・license・ブラウザ対応方針を確認）。
 - `--copy` で導入し、導入されたSkillのfileと `skills-lock.json` を両方commitする。`skills-lock.json` だけでは再現にならないためである。2026-10時点の `skills experimental_install` は、lockの `computedHash` と照合せずに配布元の現在の内容を取得し、導入先も `.agents/skills/` に固定される。
 - 更新は `bunx skills update` で行い、Skill fileのdiffをPRで確認してから取り込む。配布元の変更を、確認せずに取り込まないためである。
-- 導入した複製は直接編集しない。複製の内容は `computedHash`（各fileの相対pathと中身を、pathの大文字小文字を区別しない順に連結したsha256）と一致し続ける必要がある。project-initの `evals/policy-evaluation/vendored-skills-contract.sh` と同じ検査をprojectのquality gateに入れる。直したい点があれば、正本へPRを出す。
+- 導入した複製は直接編集しない。複製の内容は `computedHash`（各fileの相対pathと中身を、pathの大文字小文字を区別しない順に連結したsha256）と一致し続ける必要がある。project-initの `evals/policy-evaluation/vendored-skills-contract.mts` と同じ検査をprojectのquality gateに入れる。直したい点があれば、正本へPRを出す。
 - 配布元がtagを付けているなら、`https://github.com/<owner>/<repo>/tree/<tag>` で導入してlockの `ref` をtagに固定する。commit SHAは `ref` に使えない。
 - licenseが再配布を禁じるSkillはcommitしない。`skills-lock.json` にだけ記録し、必要な環境で導入する。
 - `disable-model-invocation: true` のSkill（`candidates.tsv` の `invocation` が `manual`）は、agentが自動では起動しない。採用する場合は、root contractの能力表に「この場面ではこのpathを読む」と明記する。

@@ -37,7 +37,7 @@ The layering rule: `ae-test → ae-a8n → After Effects`. Do not reach past `ae
 
 ## Delivery
 
-- `main` = released state. The current integration line is the open `release/*` branch (currently `release/0.2.0-beta.2`); independent ticket PRs target that release branch. `release/* -> main` PRs are release-class.
+- `main` = released state. The current integration line is the open `release/*` branch (currently `release/1.0.0`); independent ticket PRs target that release branch while it is unfrozen. Once a release branch is frozen at a candidate SHA, only release-blocking fixes land — non-blocking tickets wait for the next release line. `release/* -> main` PRs are release-class.
 - 1 top-level Issue = 1 number-only branch = 1 ticket PR.
 - Publish the branch and open a **Draft PR** immediately after the first meaningful commit.
 - PR landing is **merge commit only** (squash/rebase disabled at the repository level).
@@ -89,6 +89,7 @@ Skill の実体は `.agents/skills/<name>/SKILL.md`（agent 別 directory へ同
 | tdd（手動） | `tdd` — `.agents/skills/tdd/SKILL.md` | user が明示した時、または安い局所 test target がある bug fix のみ |
 | code-review | `code-review` | fixed point からの diff を Standards / Spec の2軸でレビュー |
 | correctness | `correctness-assurance` | runner / fixture / teardown 等の重要な不変条件の保証設計 |
+| system-quality | `system-quality` | 要求変更・初期化・設計再構成での全体品質改善 |
 | code-naming | `code-naming` | 命名・リネーム・命名レビュー |
 | security-advisory | `security-maintenance` | dependency / framework の脆弱性情報の取り込み |
 | estimation | `agent-delivery-estimation` | 中長期の release / roadmap 見積もり |

@@ -1,9 +1,15 @@
 ---
 name: engineering-decisions
 description: 実装・設計・修正方針を自律的に決定する時に、project内の優先順位を確認し、不要なuser escalationを避けるために使用する。
+metadata:
+  requires-skills: system-quality
 ---
 
 # Engineering Decisions
+
+## 品質判断の境界
+
+要求保存・全体構成・改善関係は [system-quality](../system-quality/SKILL.md) に従う。既存慣例、局所性、実装の容易さだけで候補を選ばない。要求の根拠、現状の事実、内部慣例を分離し、要求縮小・無根拠な互換性義務・証拠のすり替えを候補へ適用する。既知違反の不在を最適性と同一視しない。
 
 開発判断は会話上の思いつきや局所的な実装だけで決めない。
 

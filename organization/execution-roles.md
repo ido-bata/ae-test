@@ -20,6 +20,8 @@ Responsibilities may include:
 
 Supervisor is a logical role. It may be implemented by a native agent runtime, an external control plane, Herdr, a project-local adapter, or another mechanism that provides equivalent guarantees.
 
+One adopted Supervisor runtime is the **OpenClaw Gateway** (dotfiles ADR-0019, `rebuildup/dotfiles` `config/openclaw/`). In that topology a single Gateway hosts a roster of Supervisor bots — one Manager plus per-project bots — each with its own workspace, agent directory, sessions, assigned repositories, and automation declarations. The Manager coordinates cross-project priority, shared free-model quota, host load, and conflicts; per-project implementation decisions stay with the project bot. OpenClaw automations, sessions, and agent conversation history are transient runtime state only: the durable source of truth for work selection and recovery remains the project's GitHub Issues, Specs, ADRs, and PRs per `agent-recovery`. Bot-to-Worker dispatch still uses the `agent` launcher / Herdr adapters described by `herdr-runtime` and `parallel-orchestration`; OpenClaw does not gain Worker authority by hosting the Supervisor.
+
 A **dedicated non-authoring Supervisor execution profile** is a separate authority choice (ADR-0035 / `supervisor-boundary`). When enabled, that actor may reason, dispatch, observe, and decide admission, but cannot directly author source, run arbitrary shell, or use privileged service connectors. Solo/mechanical execution is still performed by a Worker. This restriction must be enforced by runtime capabilities and distinct identities, not inferred from a role prompt. A combined actor topology remains valid only when dedicated separation was not selected.
 
 ### Worker

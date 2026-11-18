@@ -11,7 +11,11 @@
  * - the npm CLI was found and runs, is the pinned one (NPM_CLI_VERSION, when
  *   set) and is new enough for `npm stage` (11.15.0);
  * - the tarball is the one the gate checked (sha1);
- * - the dist-tag is `next`, the same as package.json publishConfig.tag.
+ * - the dist-tag is the manifest's own (`publishConfig.tag`, or npm's
+ *   default `latest` when unset) — `next` for a pre-release, `latest` for a
+ *   stable version. A pre-release never goes to `latest`, and a stable
+ *   version never goes anywhere else: `npm install @ido-bata/ae-test` must
+ *   keep meaning "the supported release".
  *
  * The tag is passed explicitly: `npm stage publish` takes publishConfig.tag
  * into the request, but its own log line reports only the command-line tag,
@@ -27,8 +31,12 @@ import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, readFileSync, realpathSync } from "node:fs";
 import { posix, win32 } from "node:path";
 
-export const DIST_TAG = "next";
+import { checkDistTag, distTagFor, isEntryPoint } from "./release-tag.js";
+
+export { checkDistTag, distTagFor };
+
 export const MINIMUM_NPM = "11.15.0";
+export const NPMJS_REGISTRY = "https://registry.npmjs.org";
 
 /** @param {string} a @param {string} b */
 export function versionAtLeast(a, b) {
@@ -134,9 +142,13 @@ export function resolveNpmCli(options = {}) {
  *
  * @param {string} cli
  * @param {string[]} args
+ * @param {Record<string, string>} [env] extra environment for the npm process
  */
-export function runNpm(cli, args) {
-  return spawnSync(process.execPath, [cli, ...args], { encoding: "utf-8" });
+export function runNpm(cli, args, env) {
+  return spawnSync(process.execPath, [cli, ...args], {
+    encoding: "utf-8",
+    env: env === undefined ? process.env : { ...process.env, ...env },
+  });
 }
 
 /** @param {string} message */
@@ -156,6 +168,22 @@ function main() {
   const expected = args[expectIndex + 1];
   args.splice(expectIndex, 2);
   const dryRun = args.includes("--dry-run");
+  // Passthrough args must not override the values this script verified:
+  // npm takes the last scalar option, so a trailing `--tag=next` would stage
+  // under a tag the dist-tag check never approved. `--registry` stays
+  // allowed: tests point npm at a recording registry through it, and an
+  // explicit registry choice is the operator's, not a verified value.
+  const overridden = args.filter(
+    (arg) =>
+      ["--tag", "--access", "--provenance"].includes(arg) ||
+      /^(--tag|--access|--provenance)=/.test(arg),
+  );
+  if (overridden.length > 0) {
+    fail(`${overridden[0]} cannot be overridden; the tag, access and provenance are fixed by this script`);
+  }
+  const registryOverride = args.some(
+    (arg) => arg === "--registry" || arg.startsWith("--registry="),
+  );
 
   const resolved = resolveNpmCli();
   if (!resolved.ok) fail(resolved.error);
@@ -180,28 +208,45 @@ function main() {
   }
 
   const manifest = JSON.parse(readFileSync("package.json", "utf-8"));
-  if (manifest.publishConfig?.tag !== DIST_TAG) {
-    fail(`publishConfig.tag is ${manifest.publishConfig?.tag}, but staging uses ${DIST_TAG}`);
-  }
+  const tagCheck = checkDistTag(manifest);
+  if (!tagCheck.ok) fail(/** @type {{ error: string }} */ (tagCheck).error);
+  const tag = /** @type {{ tag: string }} */ (tagCheck).tag;
 
-  const result = runNpm(cli, [
-    "stage",
-    "publish",
-    tarball,
-    "--tag",
-    DIST_TAG,
-    "--access",
-    "public",
-    "--provenance=false",
-    "--json",
-    ...args,
-  ]);
+  // A scoped `@<scope>:registry` in .npmrc beats the generic --registry flag
+  // (npm resolves the scope first), so pin the scope registry through the
+  // environment as well: staging must land on npmjs unless the caller
+  // explicitly chose another registry (the test suite's recording registry).
+  const scope = manifest.name.startsWith("@")
+    ? manifest.name.slice(0, manifest.name.indexOf("/"))
+    : undefined;
+  const scopeEnv =
+    scope === undefined || registryOverride
+      ? undefined
+      : { [`npm_config_${scope}:registry`]: NPMJS_REGISTRY };
+  const result = runNpm(
+    cli,
+    [
+      "stage",
+      "publish",
+      tarball,
+      "--tag",
+      tag,
+      "--access",
+      "public",
+      "--provenance=false",
+      "--registry",
+      NPMJS_REGISTRY,
+      "--json",
+      ...args,
+    ],
+    scopeEnv,
+  );
   process.stderr.write(result.stderr);
   if (result.status !== 0) {
     fail(`npm stage publish exited ${result.status}`);
   }
-  if (!new RegExp(`Staging to \\S+ with tag ${DIST_TAG} and public access`).test(result.stderr)) {
-    fail(`npm did not report staging with tag ${DIST_TAG}`);
+  if (!new RegExp(`Staging to \\S+ with tag ${tag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} and public access`).test(result.stderr)) {
+    fail(`npm did not report staging with tag ${tag}`);
   }
 
   /** @type {Record<string, { name: string, version: string, shasum: string, stageId?: string }>} */
@@ -214,7 +259,7 @@ function main() {
 
   const id = `${manifest.name}@${manifest.version}`;
   const stageId = staged.stageId ?? "(dry run)";
-  console.log(`${dryRun ? "would stage" : "staged"} ${id} with tag ${DIST_TAG}, shasum ${expected}, stage id ${stageId}`);
+  console.log(`${dryRun ? "would stage" : "staged"} ${id} with tag ${tag}, shasum ${expected}, stage id ${stageId}`);
 
   if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `stage-id=${stageId}\n`);
   if (process.env.GITHUB_STEP_SUMMARY && !dryRun) {
@@ -223,7 +268,7 @@ function main() {
       [
         `## ${id} is staged, not published`,
         "",
-        `Stage id \`${stageId}\`, dist-tag \`${DIST_TAG}\`, shasum \`${expected}\`.`,
+        `Stage id \`${stageId}\`, dist-tag \`${tag}\`, shasum \`${expected}\`.`,
         "A maintainer approves it with 2FA (docs/releasing.md):",
         "",
         "```bash",
@@ -237,6 +282,6 @@ function main() {
   }
 }
 
-if (process.argv[1]?.endsWith("stage-publish.js")) {
+if (isEntryPoint(import.meta.url)) {
   main();
 }
