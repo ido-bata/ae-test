@@ -120,7 +120,7 @@ green を real host の verified と読み替えてはならない
 
 | 環境 | 状態 |
 | --- | --- |
-| macOS arm64 + After Effects 2026 | 手動実機 run の記録あり（alpha.0 時点。`0.2.0-beta.2` RC は再検証待ち） |
+| macOS arm64 + After Effects 2026 | 手動実機 run の記録あり。`0.2.0-beta.2` の release head `d80a60c` で packed consumer が 2 run PASS（`docs/verification.md`）。1.0.0 候補は freeze 後の固定 SHA で再検証する |
 | Windows | **非サポート**。実機証拠なし。Issue #15 の leftover/ownership 問題が残る |
 | その他の AE version / OS | 未検証。動作を保証しない |
 
