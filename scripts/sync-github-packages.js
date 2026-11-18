@@ -18,7 +18,7 @@
  * GITHUB_TOKEN with packages:write; a local run uses a token with
  * write:packages. The script never sees or logs a token.
  */
-import { mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -63,8 +63,9 @@ function registryHas(cli, registry, version) {
 }
 
 function fail(message) {
-  console.error(`::error::${message}`);
-  process.exit(1);
+  // Throw, not process.exit: callers inside main()'s try/finally rely on the
+  // throw to reach the cleanup before the entry-point guard reports it.
+  throw new Error(message);
 }
 
 function main() {
@@ -90,6 +91,9 @@ function main() {
     onGithub: registryHas(cli, GITHUB_PACKAGES_REGISTRY, version),
   });
   console.log(decision.reason);
+  if (decision.action === "refuse") {
+    fail(decision.reason);
+  }
   if (decision.action !== "publish") {
     return;
   }
@@ -100,18 +104,47 @@ function main() {
 
   const dir = mkdtempSync(join(tmpdir(), "ae-test-ghpkg-"));
   try {
+    // Pin the registry the existence check used: without it `npm pack` could
+    // resolve the spec against an ambient mirror and publish bytes that are
+    // not the npmjs artifact.
+    const integrity = runNpm(cli, [
+      "view",
+      `${PACKAGE_NAME}@${version}`,
+      "dist.integrity",
+      "--registry",
+      NPMJS_REGISTRY,
+      "--json",
+    ]);
+    if (integrity.status !== 0) {
+      fail(`npm view dist.integrity failed: ${integrity.stderr.trim()}`);
+    }
+    const expected = JSON.parse(integrity.stdout.trim());
+    if (typeof expected !== "string" || !expected.startsWith("sha512-")) {
+      fail(`npmjs reports no usable dist.integrity for ${PACKAGE_NAME}@${version}`);
+    }
+
     const packed = runNpm(cli, [
       "pack",
       `${PACKAGE_NAME}@${version}`,
+      "--registry",
+      NPMJS_REGISTRY,
       "--pack-destination",
       dir,
+      "--json",
     ]);
     if (packed.status !== 0) {
       fail(`npm pack failed: ${packed.stderr.trim()}`);
     }
-    const tarball = readdirSync(dir).find((name) => name.endsWith(".tgz"));
-    if (tarball === undefined) {
+    const entries = JSON.parse(packed.stdout);
+    const tarball = Array.isArray(entries) ? entries[0]?.filename : undefined;
+    const actual = Array.isArray(entries) ? entries[0]?.integrity : undefined;
+    if (typeof tarball !== "string" || typeof actual !== "string") {
       fail(`npm pack produced no tarball in ${dir}`);
+    }
+    if (actual !== expected) {
+      fail(
+        `packed tarball integrity ${actual} does not match npmjs dist.integrity ${expected}; refusing to mirror bytes that are not the published artifact`,
+      );
     }
     const published = runNpm(cli, [
       "publish",
@@ -129,5 +162,10 @@ function main() {
 }
 
 if (isEntryPoint(import.meta.url)) {
-  main();
+  try {
+    main();
+  } catch (error) {
+    console.error(`::error::${error instanceof Error ? error.message : error}`);
+    process.exit(1);
+  }
 }

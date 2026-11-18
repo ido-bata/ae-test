@@ -54,9 +54,22 @@ export type ConformanceRunOptions = {
   readonly sdkBinaries?: readonly string[];
 };
 
+/** The diagnostics this package emits; a typo in a code is a silent contract break. */
+export type ConformanceDiagnosticCode =
+  | "unknown-capability"
+  | "session-not-launched"
+  | "host-provenance-unknown"
+  | "host-provenance-mismatch"
+  | "environment-incompatible"
+  | "environment-unverified"
+  | "conformance-expectation-mismatch"
+  | "catalog-not-supplied"
+  | "no-tests-selected"
+  | "binary-unreadable";
+
 export type ConformanceDiagnostic = {
   readonly severity: "error" | "warning";
-  readonly code: string;
+  readonly code: ConformanceDiagnosticCode;
   readonly testId?: string;
   readonly capabilityId?: string;
   readonly detail: string;
@@ -130,7 +143,7 @@ export type ConformanceRecord = {
     readonly session: "launched" | "not-launched";
     readonly disposableProject: "yes" | "no" | "unknown";
     readonly sideEffects: "none-observed" | "unproven" | "not-applicable";
-    readonly cleanup: TestResult["cleanup"];
+    readonly cleanup?: TestResult["cleanup"];
     readonly uid: number | null;
     readonly asid: number | null;
     readonly hostScriptExtensions: readonly string[];

@@ -8,6 +8,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 
 import type { ConformanceExpectation, TestResult } from "./types.js";
+import { FAKE_TRANSPORT_KIND, REAL_TRANSPORT_KIND } from "./types.js";
 import { evaluateCompatibility } from "./conformance-compat.js";
 import {
   CONFORMANCE_RECORD_VERSION,
@@ -27,9 +28,6 @@ import {
  * fake is fake evidence; anything else — including a transport that cannot
  * say — has unproven provenance and must never promote.
  */
-const REAL_TRANSPORT_KIND = "script-invocation";
-const FAKE_TRANSPORT_KIND = "fake-in-process";
-
 export type HostProvenance = "fake" | "real" | "unknown";
 
 export function hostProvenance(result: TestResult): HostProvenance {
@@ -134,10 +132,14 @@ export function buildRecord(
   const classified = classify(result);
   let { result: conformanceResult, classification } = classified;
 
+  const catalog = context.catalog;
+  // Session facts are attached even when the launch itself failed, so fact
+  // presence is not evidence a session ran — only the launched flag is.
+  const sessionLaunched = result.session?.launched === true;
   const unknownCapabilityIds =
-    context.catalog === undefined
+    catalog === undefined
       ? []
-      : result.capabilities.filter((capabilityId) => !context.catalog?.records.has(capabilityId));
+      : result.capabilities.filter((capabilityId) => !catalog.records.has(capabilityId));
   for (const capabilityId of unknownCapabilityIds) {
     diagnostics.push({
       severity: "error",
@@ -159,7 +161,7 @@ export function buildRecord(
   if (
     result.status === "passed" &&
     (result.conformance ?? "pass") === "pass" &&
-    result.session === undefined
+    !sessionLaunched
   ) {
     diagnostics.push({
       severity: "error",
@@ -171,7 +173,8 @@ export function buildRecord(
 
   // The declared host is a claim; the session's transport kind is the
   // evidence. A mismatch means the run cannot stand behind its declaration.
-  if (result.session !== undefined) {
+  // With no launched session there is no transport evidence to check.
+  if (sessionLaunched) {
     const provenance = hostProvenance(result);
     if (provenance === "unknown") {
       diagnostics.push({
@@ -184,7 +187,7 @@ export function buildRecord(
       diagnostics.push({
         severity: "error",
         code: "host-provenance-mismatch",
-        detail: `run declared host "${context.host}" but the session transport is "${result.session.transport}" (${provenance})`,
+        detail: `run declared host "${context.host}" but the session transport is "${result.session?.transport}" (${provenance})`,
       });
     }
   }
@@ -193,9 +196,9 @@ export function buildRecord(
   // observed: this OS, this arch, this AE version/build. Dimensions the
   // catalog leaves open or the run could not measure stay silent. Skipped
   // tests are not evidence, so they carry no compatibility claim either.
-  if (context.catalog !== undefined && result.status !== "skipped") {
+  if (catalog !== undefined && result.status !== "skipped") {
     for (const capabilityId of result.capabilities) {
-      const row = context.catalog.records.get(capabilityId);
+      const row = catalog.records.get(capabilityId);
       if (row === undefined) {
         continue;
       }
@@ -237,7 +240,6 @@ export function buildRecord(
   }
 
   const verification = verificationFor(classification);
-  const sessionLaunched = result.session !== undefined;
   const promotable = classification === "fake-only" || classification === "real-host-verified";
   const platform = evidencePlatform();
 
@@ -283,7 +285,9 @@ export function buildRecord(
       asid: result.session?.asid ?? null,
       hostScriptExtensions: result.session?.extensions ?? [],
       fixtures: result.session?.fixtures ?? [],
-      transportKind: result.session?.transport ?? null,
+      // Only a launched session attests a transport; facts recorded for a
+      // failed launch claim nothing about how a host would have run.
+      transportKind: sessionLaunched ? (result.session?.transport ?? null) : null,
     },
     recordedAt: context.recordedAt,
     ...(result.failure === undefined

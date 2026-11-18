@@ -74,7 +74,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install toolchain
-        uses: jdx/mise-action@v2
+        uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac # v2
         with:
           version: 2026.9.12
           install: true
@@ -173,7 +173,7 @@ jobs:
           persist-credentials: false
 
       - name: Install toolchain
-        uses: jdx/mise-action@v2
+        uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac # v2
         with:
           version: 2026.9.12
           install: true
@@ -223,7 +223,7 @@ jobs:
           persist-credentials: false
 
       - name: Install toolchain
-        uses: jdx/mise-action@v2
+        uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac # v2
         with:
           version: 2026.9.12
           install: true
@@ -251,4 +251,5 @@ jobs:
       - name: Mirror the published version
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: mise exec -- node scripts/sync-github-packages.js "${{ inputs.github_packages_version }}"
+          GITHUB_PACKAGES_VERSION: ${{ inputs.github_packages_version }}
+        run: mise exec -- node scripts/sync-github-packages.js "$GITHUB_PACKAGES_VERSION"

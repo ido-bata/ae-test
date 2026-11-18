@@ -42,6 +42,11 @@ export function releaseProblems({ version, publishConfig, constant, gitTag }) {
   if (tag !== undefined && typeof tag !== "string") {
     problems.push(`publishConfig.tag must be a string, got ${JSON.stringify(tag)}`);
   }
+  // distTagFor treats an empty string as unusable; reject it here too so the
+  // gate and the staging step cannot disagree about the same manifest.
+  if (tag === "") {
+    problems.push(`publishConfig.tag must not be empty`);
+  }
   if (prerelease && (tag === undefined || tag === "latest")) {
     problems.push(`pre-release ${version} must publish under a non-default dist-tag (publishConfig.tag), not ${tag === undefined ? "latest" : JSON.stringify(tag)}`);
   }

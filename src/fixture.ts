@@ -14,13 +14,14 @@ import { basename, dirname, join, resolve } from "node:path";
 
 import { AfterEffects, type HostTransport } from "@ido-bata/ae-a8n";
 
-import type {
-  Artifact,
-  CleanupOutcome,
-  Fixture,
-  FixtureDigest,
-  SessionFacts,
-  TestInfo,
+import {
+  REAL_TRANSPORT_KIND,
+  type Artifact,
+  type CleanupOutcome,
+  type Fixture,
+  type FixtureDigest,
+  type SessionFacts,
+  type TestInfo,
 } from "./types.js";
 
 /**
@@ -278,6 +279,7 @@ export class TestFixture {
       }
     }
     return {
+      launched: session !== undefined,
       uid,
       asid: readAuditSessionId(uid),
       ae,
@@ -297,7 +299,7 @@ export class TestFixture {
   #transportKind(): string | null {
     const injected = this.#options.transport;
     if (injected === undefined) {
-      return "script-invocation";
+      return REAL_TRANSPORT_KIND;
     }
     return typeof injected.kind === "string" && injected.kind.length > 0
       ? injected.kind
