@@ -9,7 +9,7 @@
 
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { copyFileSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 
 import { AfterEffects, type HostTransport } from "@ido-bata/ae-a8n";
@@ -455,10 +455,4 @@ function collectRenders(root: string, base: string): Artifact[] {
 
 function relativeArtifactName(path: string, base: string): string {
   return path.startsWith(base) ? path.slice(base.length + 1) : basename(path);
-}
-
-/** Copies an external file into the results directory, for fixtures to reuse. */
-export function collectInto(path: string, name: string, target: string): Artifact {
-  copyFileSync(path, join(target, name));
-  return { name, path: join(target, name), bytes: statSync(path).size, kind: "attachment" };
 }
