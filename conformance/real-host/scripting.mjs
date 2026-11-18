@@ -4,7 +4,7 @@
  * project and on the committed fixture project.
  *
  * This file is intentionally NOT named `*.spec.*`: the default spec
- * discovery (`**/*.spec.*`) must keep selecting only the fake-host suite.
+ * discovery must keep selecting only the fake-host suite.
  * Run it explicitly:
  *
  *   node dist/cli.js --config conformance/real-host/ae-test.config.json \
