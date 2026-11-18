@@ -26,7 +26,7 @@ export の追加は minor、削除・改名・意味変更は breaking。型の�
 | `expectFrame(frame)` | spec context 経由では `SnapshotStore` 不要。単体 export は `expectFrame(frame, snapshots)` で `SnapshotStore` を取る（通常は context のものを使う） |
 | `toMatchObject` | 部分構造一致 assertion |
 | `AssertionError`, `AsyncExpectation` | assertion の error 型・awaitable ラッパ |
-| `TestContext`, `TestInfo`, `Fixture`, `RenderedFrame` 等の型 | spec が受け取る context の型 |
+| `TestContext`, `TestInfo`, `Fixture`, `RenderedFrame` 等の型 | spec が受け取る context の型。`types.ts` 由来の `TestDeclaration` / `TestResult` / `TestStatus` / `TestFailure` / `TestFn` / `RunSummary` / `SessionFacts` / `Artifact` / `FixtureDigest` / `ConformanceExpectation` と、options 型 `TestOptions` / `FixtureOptions` / `SnapshotStoreOptions` / `RunOptions` / `ImageComparisonOptions`、結果型 `ImageDifference` も契約対象 |
 
 ### Runner / programmatic API
 
@@ -120,7 +120,7 @@ green を real host の verified と読み替えてはならない
 
 | 環境 | 状態 |
 | --- | --- |
-| macOS arm64 + After Effects 2026 | 手動実機 run の記録あり。`0.2.0-beta.2` の release head `d80a60c` で packed consumer が 2 run PASS（`docs/verification.md`）。1.0.0 候補は freeze 後の固定 SHA で再検証する |
+| macOS arm64 + After Effects 2026 | 手動実機 run の記録あり。1.0.0 release candidate `613bba8` で packed consumer が 2 run PASS（snapshot 記録→比較、`cleanup.status=ok` / `quit=true`）。`docs/verification.md` 参照 |
 | Windows | **非サポート**。実機証拠なし。Issue #15 の leftover/ownership 問題が残る |
 | その他の AE version / OS | 未検証。動作を保証しない |
 
