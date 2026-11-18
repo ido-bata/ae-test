@@ -8,18 +8,17 @@
  * - A stable version publishes to `latest` — explicitly or by leaving
  *   publishConfig.tag unset — and nowhere else: a stable on `next` would
  *   leave `latest` pointing at an older release.
- * - Provenance stays off: it is off by decision while the repository is
- *   private, and stays off until enabling it is its own reviewed change.
- *   npm refuses provenance from a private repository; turning it on belongs
- *   with a deliberate release-tooling change, not a version bump.
+ * - Provenance stays off by decision: the repository is public now, so npm
+ *   could attest; enabling it is its own reviewed change, not a version
+ *   bump.
  * - A tag, when given, must be exactly `v<version>`.
  * - The exported AE_TEST_VERSION constant must equal the package version.
  */
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
-const PRERELEASE = /^\d+\.\d+\.\d+-.+$/;
+import { PRERELEASE, distTagFor, isEntryPoint } from "./release-tag.js";
 
 /**
  * The release preconditions as data, so they can be tested without a
@@ -83,7 +82,7 @@ function main() {
     gitTag: process.argv[2],
   });
 
-  const tag = manifest.publishConfig?.tag ?? "latest";
+  const tag = distTagFor({ version: manifest.version, publishConfig: manifest.publishConfig }) ?? "?";
   if (problems.length > 0) {
     for (const problem of problems) console.error(`::error::${problem}`);
     process.exit(1);
@@ -91,6 +90,6 @@ function main() {
   console.log(`${manifest.name}@${manifest.version} → dist-tag "${tag}"${process.argv[2] ? `, tag ${process.argv[2]}` : ""}: ok`);
 }
 
-if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+if (isEntryPoint(import.meta.url)) {
   main();
 }

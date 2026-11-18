@@ -60,11 +60,16 @@ describe("main", () => {
     });
   });
 
-  it("needs the Linux and Windows CI jobs, reported by GitHub Actions", () => {
-    expect(rule(main, "required_status_checks")?.parameters?.["required_status_checks"]).toEqual([
+  it("needs the Linux and Windows CI jobs, reported by GitHub Actions, on an up-to-date branch", () => {
+    const parameters = rule(main, "required_status_checks")?.parameters;
+    expect(parameters?.["required_status_checks"]).toEqual([
       { context: "check", integration_id: rulesets.GITHUB_ACTIONS_APP_ID },
       { context: "release-tooling-windows", integration_id: rulesets.GITHUB_ACTIONS_APP_ID },
     ]);
+    // Without the strict policy a PR's earlier green run can satisfy the
+    // rule after new commits landed — with zero required approvals, nothing
+    // else would catch that.
+    expect(parameters?.["strict_required_status_checks_policy"]).toBe(true);
   });
 
   it("cannot be force-pushed or deleted, and does not require linear history", () => {
@@ -80,6 +85,10 @@ describe("release tags", () => {
     expect(tags.conditions).toEqual({ ref_name: { include: ["refs/tags/v*"], exclude: [] } });
     expect(tags.rules.map((r) => r.type).sort()).toEqual(["deletion", "non_fast_forward", "update"]);
     expect(rule(tags, "creation")).toBeUndefined();
+    expect(rule(tags, "update")?.parameters).toEqual({
+      update_allows_fetch_and_merge: false,
+      update_allows_force_push: false,
+    });
     expect(tags.bypass_actors).toEqual([]);
   });
 });
@@ -92,8 +101,8 @@ describe("plan", () => {
   it("changes nothing when run again against what it applied", () => {
     const existing = [asReturned(main, 1), asReturned(tags, 2)];
     expect(rulesets.plan(existing, desired)).toEqual([
-      { action: "unchanged", name: "main-branch-protection", id: 1, changes: [] },
       { action: "unchanged", name: "release-tag-protection", id: 2, changes: [] },
+      { action: "unchanged", name: "main-branch-protection", id: 1, changes: [] },
     ]);
   });
 
@@ -106,7 +115,7 @@ describe("plan", () => {
       },
       7,
     );
-    const step = rulesets.plan([asReturned(main, 1), loose], desired)[1];
+    const step = rulesets.plan([asReturned(main, 1), loose], desired).find((s) => s.name === "release-tag-protection");
     expect(step).toMatchObject({ action: "update", id: 7 });
     expect(step?.changes).toEqual([
       expect.stringContaining("bypass_actors"),

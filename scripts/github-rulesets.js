@@ -12,26 +12,29 @@
  * second copy. Two rulesets with the same name and target is an error, not
  * something to guess about. Rulesets with other names are left alone.
  *
+ * - `release-tag-protection` (refs/tags/v*): a release tag, once pushed, is
+ *   never moved, force-pushed or deleted. Creating one is not restricted: the
+ *   publish workflow's gate decides what a tag may publish. Applied first:
+ *   tag integrity is the harder state to restore if a later step fails.
  * - `main-branch-protection` (refs/heads/main): changes go through a pull
  *   request, merged with a merge commit; review threads resolved; zero
  *   approvals for now; the CI jobs `check` (Linux) and
  *   `release-tooling-windows` (Windows) green, reported by GitHub Actions
- *   itself; no force push, no deletion. No linear-history rule (merge commits
- *   are the policy) and no bypass for anyone.
- * - `release-tag-protection` (refs/tags/v*): a release tag, once pushed, is
- *   never moved, force-pushed or deleted. Creating one is not restricted: the
- *   publish workflow's gate decides what a tag may publish.
+ *   itself, on a branch that is up to date with main; no force push, no
+ *   deletion. No linear-history rule (merge commits are the policy) and no
+ *   bypass for anyone.
  *
- * It refuses to apply while the repository is private: on GitHub Free a
- * private repository cannot enforce rulesets, and the plan is to turn these
- * on as an explicit step once the repository is public. Before applying it
- * also checks that each required check is a GitHub Actions check run that
- * actually ran on a recent pull request, so a renamed job cannot leave main
- * waiting forever for a check that no longer exists.
+ * The repository is public, so rulesets are enforceable; the script still
+ * refuses to apply while it is not (GitHub Free does not enforce rulesets
+ * on a private repository). Before applying it also checks that each
+ * required check is a GitHub Actions check run that actually ran on the
+ * default branch head, so a renamed job cannot leave main waiting forever
+ * for a check that no longer exists. A dry run prints the plan even when
+ * that check cannot be made.
  */
 import { execFileSync } from "node:child_process";
-import { resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+
+import { isEntryPoint } from "./release-tag.js";
 
 /** GitHub Actions' app id: required checks must come from it, not any app. */
 export const GITHUB_ACTIONS_APP_ID = 15368;
@@ -45,6 +48,21 @@ export const REQUIRED_CHECKS = ["check", "release-tooling-windows"];
  */
 export function desiredRulesets(checks = REQUIRED_CHECKS) {
   return [
+    {
+      name: "release-tag-protection",
+      target: "tag",
+      enforcement: "active",
+      conditions: { ref_name: { include: ["refs/tags/v*"], exclude: [] } },
+      bypass_actors: [],
+      rules: [
+        { type: "deletion" },
+        { type: "non_fast_forward" },
+        {
+          type: "update",
+          parameters: { update_allows_fetch_and_merge: false, update_allows_force_push: false },
+        },
+      ],
+    },
     {
       name: "main-branch-protection",
       target: "branch",
@@ -69,22 +87,10 @@ export function desiredRulesets(checks = REQUIRED_CHECKS) {
           type: "required_status_checks",
           parameters: {
             do_not_enforce_on_create: false,
-            strict_required_status_checks_policy: false,
+            strict_required_status_checks_policy: true,
             required_status_checks: checks.map((context) => ({ context, integration_id: GITHUB_ACTIONS_APP_ID })),
           },
         },
-      ],
-    },
-    {
-      name: "release-tag-protection",
-      target: "tag",
-      enforcement: "active",
-      conditions: { ref_name: { include: ["refs/tags/v*"], exclude: [] } },
-      bypass_actors: [],
-      rules: [
-        { type: "deletion" },
-        { type: "non_fast_forward" },
-        { type: "update", parameters: { update_allows_fetch_and_merge: false } },
       ],
     },
   ];
@@ -171,8 +177,8 @@ export function plan(existing, desired) {
 }
 
 /**
- * Required checks that GitHub Actions did not run on the given pull request
- * head. An empty list means every one of them exists.
+ * Required checks that GitHub Actions did not run on the given commit.
+ * An empty list means every one of them exists.
  *
  * @param {readonly string[]} checks
  * @param {Array<{ name: string, app?: { id?: number } | null }>} checkRuns
@@ -195,20 +201,44 @@ function ghJson(path) {
 async function main() {
   const args = process.argv.slice(2);
   const apply = args.includes("--apply");
-  const repoIndex = args.indexOf("--repo");
-  const repo =
-    repoIndex >= 0 ? args[repoIndex + 1] : gh(["repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"]).trim();
-  if (repo === undefined || !/^[\w.-]+\/[\w.-]+$/.test(repo)) throw new Error("--repo needs owner/name");
+  /** @type {string | undefined} */
+  let repo;
+  let repoSeen = false;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--apply") continue;
+    if (arg === "--repo") {
+      repo = args[++i];
+      repoSeen = true;
+      continue;
+    }
+    if (arg.startsWith("--repo=")) {
+      repo = arg.slice("--repo=".length);
+      repoSeen = true;
+      continue;
+    }
+    throw new Error(`unknown argument ${arg}`);
+  }
+  if (!repoSeen) {
+    repo = gh(["repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"]).trim();
+  }
+  if (repo === undefined || repo === "" || !/^[\w.-]+\/[\w.-]+$/.test(repo)) {
+    throw new Error("--repo needs owner/name");
+  }
 
   const info = ghJson(`repos/${repo}`);
   console.log(`${repo}: ${info.visibility}, admin=${info.permissions?.admin === true}`);
 
-  const pulls = ghJson(`repos/${repo}/pulls?state=all&per_page=1`);
-  const head = pulls[0]?.head?.sha;
-  if (head === undefined) throw new Error("no pull request to check the required checks against");
-  const runs = ghJson(`repos/${repo}/commits/${head}/check-runs?per_page=100`).check_runs;
+  // The checks that gate the default branch are the ones that ran on its
+  // head, not on some pull request's head: a PR may be a draft, a fork, or
+  // simply old, and none of those say anything about what main requires.
+  const branch = info.default_branch ?? "main";
+  const head = ghJson(`repos/${repo}/commits/${branch}`).sha;
+  const runs = ghJson(`repos/${repo}/commits/${branch}/check-runs?per_page=100`).check_runs ?? [];
   const missing = missingChecks(REQUIRED_CHECKS, runs);
-  console.log(`required checks on PR #${pulls[0].number} (${head.slice(0, 7)}): ${missing.length === 0 ? "all present" : `missing ${missing.join(", ")}`}`);
+  console.log(
+    `required checks on ${branch} (${String(head).slice(0, 7)}): ${missing.length === 0 ? "all present" : `missing ${missing.join(", ")}`}`,
+  );
 
   const summaries = ghJson(`repos/${repo}/rulesets?includes_parents=false&per_page=100`);
   const existing = summaries.map((/** @type {{ id: number }} */ summary) => ghJson(`repos/${repo}/rulesets/${summary.id}`));
@@ -223,24 +253,38 @@ async function main() {
     console.log("dry run: nothing changed (add --apply to apply)");
     return;
   }
-  if (info.visibility !== "public") throw new Error(`${repo} is ${info.visibility}: rulesets are applied once it is public`);
+  if (info.visibility !== "public") throw new Error(`${repo} is ${info.visibility}: rulesets are applied only while it is public`);
   if (info.permissions?.admin !== true) throw new Error(`not an admin of ${repo}`);
-  if (missing.length > 0) throw new Error(`required checks did not run on the latest pull request: ${missing.join(", ")}`);
+  if (missing.length > 0) throw new Error(`required checks did not run on ${branch}: ${missing.join(", ")}`);
 
-  for (const step of steps) {
-    if (step.action === "unchanged") continue;
-    const body = JSON.stringify(desired.find((want) => want.name === step.name));
-    const result =
-      step.action === "create"
-        ? JSON.parse(gh(["api", "--method", "POST", `repos/${repo}/rulesets`, "--input", "-"], body))
-        : JSON.parse(gh(["api", "--method", "PUT", `repos/${repo}/rulesets/${step.id}`, "--input", "-"], body));
-    const after = differences(ghJson(`repos/${repo}/rulesets/${result.id}`), desired.find((want) => want.name === step.name));
-    if (after.length > 0) throw new Error(`${step.name} still differs after ${step.action}: ${after.join("; ")}`);
-    console.log(`${step.action}d: ${step.name} (#${result.id}), read back and matching`);
+  /** @type {string[]} */
+  const applied = [];
+  try {
+    for (const step of steps) {
+      if (step.action === "unchanged") continue;
+      const want = desired.find((candidate) => candidate.name === step.name);
+      const body = JSON.stringify(want);
+      const result =
+        step.action === "create"
+          ? JSON.parse(gh(["api", "--method", "POST", `repos/${repo}/rulesets`, "--input", "-"], body))
+          : JSON.parse(gh(["api", "--method", "PUT", `repos/${repo}/rulesets/${step.id}`, "--input", "-"], body));
+      const after = differences(ghJson(`repos/${repo}/rulesets/${result.id}`), want);
+      if (after.length > 0) throw new Error(`${step.name} still differs after ${step.action}: ${after.join("; ")}`);
+      applied.push(step.name);
+      console.log(`${step.action}d: ${step.name} (#${result.id}), read back and matching`);
+    }
+  } catch (error) {
+    const pending = steps
+      .filter((step) => step.action !== "unchanged" && !applied.includes(step.name))
+      .map((step) => step.name);
+    console.error(
+      `apply stopped after ${applied.length === 0 ? "nothing" : applied.join(", ")}; still pending: ${pending.length === 0 ? "nothing" : pending.join(", ")}`,
+    );
+    throw error;
   }
 }
 
-if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+if (isEntryPoint(import.meta.url)) {
   main().catch((error) => {
     console.error(error instanceof Error ? error.message : error);
     process.exit(1);

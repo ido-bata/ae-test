@@ -31,46 +31,11 @@ import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, readFileSync, realpathSync } from "node:fs";
 import { posix, win32 } from "node:path";
 
+import { checkDistTag, distTagFor, isEntryPoint } from "./release-tag.js";
+
+export { checkDistTag, distTagFor };
+
 export const MINIMUM_NPM = "11.15.0";
-
-const PRERELEASE = /^\d+\.\d+\.\d+-.+$/;
-
-/**
- * The dist-tag a manifest publishes under: `publishConfig.tag`, or npm's
- * default `latest` when the field is absent. Returns null when the field is
- * present but not a usable tag.
- *
- * @param {{ version?: string, publishConfig?: { tag?: unknown } }} manifest
- * @returns {string | null}
- */
-export function distTagFor(manifest) {
-  const tag = manifest.publishConfig?.tag ?? "latest";
-  return typeof tag === "string" && tag !== "" ? tag : null;
-}
-
-/**
- * The tag a version must publish under. A pre-release never lands on
- * `latest` (an `npm install` without a tag must not pick it up), and a
- * stable version publishes to `latest` only — a stable sitting on `next`
- * would leave `latest` pointing at an older release.
- *
- * @param {{ version: string, publishConfig?: { tag?: unknown } }} manifest
- * @returns {{ ok: true, tag: string } | { ok: false, error: string }}
- */
-export function checkDistTag(manifest) {
-  const tag = distTagFor(manifest);
-  if (tag === null) {
-    return { ok: false, error: `publishConfig.tag is ${JSON.stringify(manifest.publishConfig?.tag)}, not a usable dist-tag` };
-  }
-  const prerelease = PRERELEASE.test(manifest.version);
-  if (prerelease && tag === "latest") {
-    return { ok: false, error: `pre-release ${manifest.version} must not publish to latest; set publishConfig.tag (e.g. "next")` };
-  }
-  if (!prerelease && tag !== "latest") {
-    return { ok: false, error: `stable ${manifest.version} must publish to latest, not ${tag}` };
-  }
-  return { ok: true, tag };
-}
 
 /** @param {string} a @param {string} b */
 export function versionAtLeast(a, b) {
@@ -279,6 +244,6 @@ function main() {
   }
 }
 
-if (process.argv[1]?.endsWith("stage-publish.js")) {
+if (isEntryPoint(import.meta.url)) {
   main();
 }
