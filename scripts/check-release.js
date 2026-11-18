@@ -40,6 +40,9 @@ export function releaseProblems({ version, publishConfig, constant, gitTag }) {
   const prerelease = PRERELEASE.test(version);
   const tag = publishConfig?.tag;
 
+  if (tag !== undefined && typeof tag !== "string") {
+    problems.push(`publishConfig.tag must be a string, got ${JSON.stringify(tag)}`);
+  }
   if (prerelease && (tag === undefined || tag === "latest")) {
     problems.push(`pre-release ${version} must publish under a non-default dist-tag (publishConfig.tag), not ${tag === undefined ? "latest" : JSON.stringify(tag)}`);
   }
