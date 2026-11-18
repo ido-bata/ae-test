@@ -59,7 +59,8 @@ changes the render, a parameter write reaches the pixels, and a snapshot
 is recorded then compared on a second run.
 
 A third harness covers the conformance evidence path itself (#112):
-`conformance/real-host/scripting.mjs` is not a `*.spec.*` file, so it never
+`conformance/real-host/scripting.mjs` (repository tooling — not shipped
+in the npm package) is not a `*.spec.*` file, so it never
 runs in CI or the fake-host lane. Run explicitly with
 `--config conformance/real-host/ae-test.config.json --install-dir <AE>` plus
 `--conformance --capability-catalog <ae-devtools catalog.json>`; it builds a
