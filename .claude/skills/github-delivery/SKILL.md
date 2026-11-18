@@ -334,7 +334,7 @@ Draftは未完了作業の一時状態である。次の条件をすべて満た
 
 
 - Issue acceptance criteriaを実装済み
-- current SHAに対するticket-level integration quality gateを実行済み
+- current SHAに対するstage-specific ticket-level integration quality gateを実行済み
 - blocking known issueが解消済み、または明示的にscope外
 - PR description / assignee / labels / reviewer metadataが現在の実装と一致
 - required reviewerをrequest済み。meaningful reviewer不在はreview/merge semanticsへ影響する場合だけreaderに必要な形で説明し、mutable stateとして恒常的にserializeしない
@@ -393,7 +393,7 @@ intended baseを安全に復元できない等、本当に解けない場合だ�
 
 ## Release integration
 
-release branchは複数ticketの統合結果を保持するrelease train integration lineであり、1週間のplanning windowと1:1ではない。
+release branchはticketを集約する開発中のintegration lineであり、常時release-readyではない（ADR-0036）。
 
 release branchはrelease train開始時に作成する。GitHubは`main`と差分がない状態ではPRを作れないため、release branchに最初のmeaningful integrated differenceが入った直後にDraft release PRを作成する。zero-diff release branchだけはDraft PR invariantの例外である。
 

@@ -89,6 +89,7 @@ Skill の実体は `.agents/skills/<name>/SKILL.md`（agent 別 directory へ同
 | tdd（手動） | `tdd` — `.agents/skills/tdd/SKILL.md` | user が明示した時、または安い局所 test target がある bug fix のみ |
 | code-review | `code-review` | fixed point からの diff を Standards / Spec の2軸でレビュー |
 | correctness | `correctness-assurance` | runner / fixture / teardown 等の重要な不変条件の保証設計 |
+| system-quality | `system-quality` | 要求変更・初期化・設計再構成での全体品質改善 |
 | code-naming | `code-naming` | 命名・リネーム・命名レビュー |
 | security-advisory | `security-maintenance` | dependency / framework の脆弱性情報の取り込み |
 | estimation | `agent-delivery-estimation` | 中長期の release / roadmap 見積もり |

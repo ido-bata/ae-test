@@ -1,9 +1,15 @@
 ---
 name: correctness-assurance
 description: 重要な不変条件・事前条件・事後条件を抽出し、型・静的解析・runtime assertion・テスト・property/differential testing・formal verification・reviewの中から最小十分な保証手段を設計する時に使用する。
+metadata:
+  requires-skills: system-quality
 ---
 
 # Correctness Assurance
+
+## 要求保存と改善の証拠
+
+[system-quality](../system-quality/SKILL.md) の契約に従い、要求充足、候補間の改善、既知欠陥排除、最適性を別々に扱う。実装から期待値を逆算せず、比較候補へ同じ要求と環境条件を適用する。前提強化・入力除外・証明対象縮小は契約変更として元の根拠と照合する。証明は実ソースの意味論との対応が確立した範囲に限る。必要な保証を満たした後に重複を除くのであり、保証範囲を「最小」に縮小しない。
 
 correctness assuranceは、単一の手法で「正しさ」を保証することではない。
 
