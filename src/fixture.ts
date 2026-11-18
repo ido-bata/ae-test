@@ -454,12 +454,17 @@ function collectRenders(root: string, base: string): Artifact[] {
       if (entry.isDirectory()) {
         walk(path);
       } else if (entry.name.toLowerCase().endsWith(".png")) {
-        found.push({
-          name: relativeArtifactName(path, base),
-          path,
-          bytes: statSync(path).size,
-          kind: "render",
-        });
+        try {
+          found.push({
+            name: relativeArtifactName(path, base),
+            path,
+            bytes: statSync(path).size,
+            kind: "render",
+          });
+        } catch {
+          // The file vanished between listing and stat — skip it rather
+          // than failing the whole collection (and the teardown after it).
+        }
       }
     }
   };

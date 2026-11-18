@@ -300,7 +300,12 @@ function matrixCells(records: readonly ConformanceRecord[]): ConformanceMatrixCe
   >();
   for (const record of records) {
     const aeVersion = record.aeVersion?.version ?? null;
-    const key = `${record.platform.os}${record.platform.osVersion}${record.platform.arch}${aeVersion ?? ""}`;
+    const key = JSON.stringify([
+      record.platform.os,
+      record.platform.osVersion,
+      record.platform.arch,
+      aeVersion,
+    ]);
     let cell = cells.get(key);
     if (cell === undefined) {
       cell = {
