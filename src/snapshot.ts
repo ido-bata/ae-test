@@ -60,6 +60,13 @@ export class SnapshotStore {
   readonly #update: boolean;
   readonly #artifactDir: string | undefined;
   readonly #artifacts: Artifact[] = [];
+  /**
+   * Sanitized baseline base → the snapshot name that claimed it. Two
+   * different names can sanitize to the same file (`"a/b"` and `"a-b"`),
+   * which would silently share one baseline — a false pass waiting to
+   * happen. The first claim wins; a second, different name fails loudly.
+   */
+  readonly #claimedBases = new Map<string, string>();
   #diffSequence = 0;
 
   constructor(options: SnapshotStoreOptions) {
@@ -81,6 +88,10 @@ export class SnapshotStore {
     frame: RenderedFrame,
     compareOptions?: ImageComparisonOptions,
   ): Promise<void> {
+    const collision = this.#claimBase(name);
+    if (collision !== undefined) {
+      return Promise.reject(collision);
+    }
     if (this.#update) {
       this.#write(this.#pathFor(name), this.#pngPathFor(name), digest, frame);
       return Promise.resolve();
@@ -283,6 +294,29 @@ export class SnapshotStore {
   #baseFor(name: string): string {
     const safe = name.replace(/[^a-zA-Z0-9._-]+/g, "-");
     return `${this.#testId}--${safe}`;
+  }
+
+  /**
+   * Reserves the baseline file name for `name`, or returns the assertion
+   * failure when a different snapshot name already claimed the same
+   * sanitized base. Baseline file names cannot change without orphaning
+   * every existing baseline, so the collision is refused instead.
+   */
+  #claimBase(name: string): AssertionError | undefined {
+    const base = this.#baseFor(name);
+    const claimed = this.#claimedBases.get(base);
+    if (claimed === undefined) {
+      this.#claimedBases.set(base, name);
+      return undefined;
+    }
+    if (claimed === name) {
+      return undefined;
+    }
+    return new AssertionError(
+      `snapshot names "${claimed}" and "${name}" both map to baseline file ` +
+        `"${base}" after sanitization; they would share one baseline. ` +
+        `Rename one of them.`,
+    );
   }
 
   #write(shaPath: string, pngPath: string, digest: string, frame: RenderedFrame): void {
