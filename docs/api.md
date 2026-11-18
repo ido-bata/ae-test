@@ -120,7 +120,7 @@ green を real host の verified と読み替えてはならない
 
 | 環境 | 状態 |
 | --- | --- |
-| macOS arm64 + After Effects 2026 | 手動実機 run の記録あり。1.0.0 release candidate で packed consumer が 2 run PASS（snapshot 記録→比較、`cleanup.status=ok` / `quit=true`）。対象 SHA と tarball shasum は `docs/verification.md` 参照 |
+| macOS arm64 + After Effects 2026（build 26.5x89 / 26.5.3x9） | 手動実機 run の記録あり。1.0.0 release candidate で packed consumer が 2 run PASS（snapshot 記録→比較、`cleanup.status=ok` / `quit=true`）。対象 SHA と tarball shasum は `docs/verification.md` 参照。他の AE 2026 build は未検証 |
 | Windows | **非サポート**。実機証拠なし。Issue #15 の leftover/ownership 問題が残る |
 | その他の AE version / OS | 未検証。動作を保証しない |
 

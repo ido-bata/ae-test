@@ -245,7 +245,8 @@ node scripts/sync-github-packages.js <version>
 ```
 
 `scripts/sync-github-packages.js` refuses a version that is not on npmjs,
-skips one already mirrored (safe to re-run), and publishes the exact
+skips one already mirrored with matching `dist.integrity` (safe to re-run;
+a divergent copy fails instead of skipping), and publishes the exact
 `npm pack` tarball of the npmjs version, so both registries serve identical
 bytes. It never runs on tag push and never blocks the npmjs flow. The first
 publish links the package to this repository for the Packages tab; check the

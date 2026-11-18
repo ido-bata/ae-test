@@ -47,9 +47,12 @@ rulesets by name and target, so a second run changes nothing. Other
 rulesets are left alone.
 
 The required checks name the CI jobs, not the workflow. If a job in
-`.github/workflows/ci.yml` is renamed, change `REQUIRED_CHECKS` in the same
-pull request, then re-run the script after merging. Until then, main waits
-for a check that no longer runs. The checks are tied to GitHub Actions'
+`.github/workflows/ci.yml` is renamed, the active ruleset still requires
+the old check name, so the rename cannot merge until the ruleset is
+updated: apply the ruleset change first (or keep reporting the old check
+name), then update `REQUIRED_CHECKS` in `scripts/github-rulesets.js` and
+re-run the script. Until the ruleset and `REQUIRED_CHECKS` agree, main
+waits for a check that no longer runs. The checks are tied to GitHub Actions'
 app id (15368), so no other installed app can satisfy them by reporting a
 status with the same name.
 
