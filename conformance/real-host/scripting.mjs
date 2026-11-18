@@ -1,7 +1,11 @@
 /**
  * Real-host conformance suite: the scripting domain of ae-a8n's built-in
- * dispatch table, exercised through ae-test's public API on a disposable
- * project and on the committed fixture project.
+ * dispatch table, exercised through ae-test's public API.
+ *
+ * Every test works on the untitled project After Effects always has open:
+ * it creates a disposable comp and text layer, and teardown's discard
+ * leaves nothing behind. No `.aep` fixture is required — the committed
+ * `fixtures/fixture.aep` is a fake-host placeholder, not a real project.
  *
  * This file is intentionally NOT named `*.spec.*`: the default spec
  * discovery must keep selecting only the fake-host suite.
@@ -18,36 +22,52 @@
 
 import { test } from "../../dist/index.js";
 
-// A built-in effect's match name is locale-independent; display names are
-// not, so match names are the only honest identifier.
+// Match names are locale-independent; display names are not.
 const EFFECT = "ADBE Gaussian Blur 2";
 const BLURRINESS = `${EFFECT}-0001`;
 const BLURRINESS_VALUE = 50;
 
+const COMP = {
+  name: "Disposable",
+  width: 64,
+  height: 64,
+  duration: 1,
+  frameRate: 30,
+};
+
+const TEXT = {
+  text: "AE",
+  name: "Text 1",
+  fontSize: 32,
+  fillColor: [1, 0, 0],
+  position: [32, 32],
+};
+
 test("reads project, composition and layer state", async ({
   ae,
-  fixture,
   expect,
 }) => {
-  const project = await ae.openProject(fixture.project("fixture.aep"));
+  const project = await ae.project();
   const projectInfo = await project.info();
-  expect(projectInfo.file).toContain("fixture.aep");
+  expect(projectInfo).toBeDefined();
 
+  await project.createComp(COMP);
   const comps = await project.comps();
-  expect(comps.some((comp) => comp.name === "Main")).toBe(true);
+  expect(comps.some((comp) => comp.name === COMP.name)).toBe(true);
 
-  const comp = await project.comp("Main");
+  const comp = await project.comp(COMP.name);
   const compInfo = await comp.info();
-  expect(compInfo.name).toBe("Main");
+  expect(compInfo.name).toBe(COMP.name);
 
+  const { layer } = await comp.addTextLayer(TEXT);
   const layers = await comp.layers();
-  expect(layers.some((layer) => layer.name === "Solid 1")).toBe(true);
+  expect(layers.some((entry) => entry.name === layer.name)).toBe(true);
 
-  const layer = await comp.layer("Solid 1");
-  const layerInfo = await layer.info();
-  expect(layerInfo.name).toBe("Solid 1");
+  const resolved = await comp.layer(layer.name);
+  const layerInfo = await resolved.info();
+  expect(layerInfo.name).toBe(layer.name);
 
-  const transform = await layer.transform();
+  const transform = await resolved.transform();
   expect(transform).toBeDefined();
 
   // The not-found path is part of the read contract: a missing comp is a
@@ -58,37 +78,24 @@ test("reads project, composition and layer state", async ({
   });
 }, {
   capabilities: [
-    "ae.operation.project.open",
     "ae.operation.project.info",
     "ae.operation.project.list-comps",
+    "ae.operation.comp.create",
     "ae.operation.comp.info",
     "ae.operation.comp.list-layers",
+    "ae.operation.layer.add-text",
     "ae.operation.layer.get-layer",
     "ae.operation.layer.get-transform",
   ],
 });
 
 test("writes state on a disposable project", async ({ ae, expect }) => {
-  // `ae.project()` binds the untitled project AE always has open; nothing
-  // is saved, so teardown's discard leaves no trace.
   const project = await ae.project();
-  const comp = await project.createComp({
-    name: "Disposable",
-    width: 64,
-    height: 64,
-    duration: 1,
-    frameRate: 30,
-  });
-  const { layer } = await comp.addTextLayer({
-    text: "AE",
-    name: "Text 1",
-    fontSize: 32,
-    fillColor: [1, 0, 0],
-    position: [32, 32],
-  });
+  const comp = await project.createComp(COMP);
+  const { layer } = await comp.addTextLayer(TEXT);
 
-  const selected = await comp.selectLayers(["Text 1"]);
-  expect(selected).toContain("Text 1");
+  const selected = await comp.selectLayers([layer.name]);
+  expect(selected.includes(layer.name)).toBe(true);
 
   const disabled = await layer.setEnabled(false);
   expect(disabled.enabled).toBe(false);
@@ -96,7 +103,7 @@ test("writes state on a disposable project", async ({ ae, expect }) => {
   expect(reenabled.enabled).toBe(true);
 
   const layers = await comp.layers();
-  expect(layers.some((entry) => entry.name === "Text 1")).toBe(true);
+  expect(layers.some((entry) => entry.name === layer.name)).toBe(true);
 
   await comp.openInViewer();
 }, {
@@ -113,11 +120,11 @@ test("writes state on a disposable project", async ({ ae, expect }) => {
 
 test("applies an effect and round-trips its parameters", async ({
   ae,
-  fixture,
   expect,
 }) => {
-  const project = await ae.openProject(fixture.project("fixture.aep"));
-  const layer = await (await project.comp("Main")).layer("Solid 1");
+  const project = await ae.project();
+  const comp = await project.createComp(COMP);
+  const { layer } = await comp.addTextLayer(TEXT);
 
   const all = await layer.effects.all();
   expect(Array.isArray(all)).toBe(true);
@@ -140,9 +147,9 @@ test("applies an effect and round-trips its parameters", async ({
   expect(described.value).toBe(BLURRINESS_VALUE);
 }, {
   capabilities: [
-    "ae.operation.project.open",
-    "ae.operation.comp.info",
-    "ae.operation.layer.get-layer",
+    "ae.operation.project.info",
+    "ae.operation.comp.create",
+    "ae.operation.layer.add-text",
     "ae.operation.layer.list-effects",
     "ae.operation.effect.apply",
     "ae.operation.effect.list-parameters",
@@ -153,13 +160,12 @@ test("applies an effect and round-trips its parameters", async ({
 
 test("renders frames whose pixels respond to the parameter", async ({
   ae,
-  fixture,
   expect,
   expectFrame,
 }) => {
-  const project = await ae.openProject(fixture.project("fixture.aep"));
-  const comp = await project.comp("Main");
-  const layer = await comp.layer("Solid 1");
+  const project = await ae.project();
+  const comp = await project.createComp(COMP);
+  const { layer } = await comp.addTextLayer(TEXT);
 
   // Three renders isolate the parameter's effect on pixels: `before` has
   // no effect, `applied` has it at defaults, `after` has Blurriness set.
@@ -175,9 +181,9 @@ test("renders frames whose pixels respond to the parameter", async ({
   await expectFrame(after).toMatchSnapshot("real-gaussian-blur");
 }, {
   capabilities: [
-    "ae.operation.project.open",
-    "ae.operation.comp.info",
-    "ae.operation.layer.get-layer",
+    "ae.operation.project.info",
+    "ae.operation.comp.create",
+    "ae.operation.layer.add-text",
     "ae.operation.effect.apply",
     "ae.operation.effect.set-parameter",
     "ae.operation.render.frame",
