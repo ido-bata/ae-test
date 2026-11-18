@@ -1,0 +1,8 @@
+{
+  "specs": ["*.mjs"],
+  "host": "real",
+  "resultsDir": "../../.ae-test-results/conformance-real-host",
+  "baselineDir": "../../__snapshots__/conformance/real-host",
+  "projectsDir": "../../fixtures",
+  "timeoutMs": 120000
+}

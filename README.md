@@ -139,6 +139,27 @@ not be evaluated. `--plugin-binary <path>` and `--sdk-binary <path>`
 the consumer's same-bytes check, and `summary.matrix` groups the records by
 observed OS × AE version.
 
+**Real-host conformance suite.** `conformance/real-host/` is a spec set that
+is deliberately not matched by the default `*.spec.*` discovery — it exists
+to produce `real-host-verified` conformance evidence on a machine with
+After Effects installed, not to run in CI:
+
+```sh
+node dist/cli.js --config conformance/real-host/ae-test.config.json \
+  --install-dir "/Applications/Adobe After Effects 2026" \
+  --conformance --capability-catalog <ae-devtools catalog.json> \
+  --source-sha "$(git rev-parse HEAD)"
+```
+
+It exercises the scripting domain of ae-a8n's built-in dispatch table —
+project/comp/layer reads, writes on a disposable untitled project, an effect
+parameter round-trip, and renders whose pixels respond to the parameter —
+through the same public API a consumer uses. `--update-snapshots` records
+the render baseline on the first run; later runs compare against it. Every
+test still pays one AE launch, so the suite is four launches, not a smoke
+test. SDK/native-plugin capabilities stay upstream-owned (ae-devtools) and
+are not claimed here.
+
 Use **match names** (`ADBE Gaussian Blur 2`, `ADBE Gaussian Blur 2-0001`), not
 display names: display names are localised. ae-a8n's skill and README cover
 the After Effects side ([ae-a8n](https://www.npmjs.com/package/@ido-bata/ae-a8n)).
@@ -270,6 +291,8 @@ ae-test [files...|--spec <glob>...] [options]
   --grep <substring>      only tests whose title contains this
   --capability <id>       only tests declaring this capability ID (repeatable)
   --update-snapshots      record baselines instead of comparing
+  --host-script <file>    host script built by "ae-a8n extension build"
+  --install-dir <dir>     explicit After Effects installation directory
   --fake-host             use the in-process fake After Effects instead of a real one
   --conformance           write conformance.json evidence beside report.json
   --capability-catalog <path>  validate declared capability IDs against ae-devtools catalog.json

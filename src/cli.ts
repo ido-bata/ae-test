@@ -51,6 +51,8 @@ Options:
   --update-snapshots      Record snapshot baselines instead of comparing
   --host-script <file>    Host script built by "ae-a8n extension build", so a
                           project's own static host methods can be called
+  --install-dir <dir>     Explicit After Effects installation directory;
+                          overrides config "installDir"
   --fake-host             Run against the in-repo fake After Effects host
                           instead of a real installation
   --conformance           Write conformance.json evidence beside report.json
@@ -77,6 +79,7 @@ type CliOptions = {
   capabilities?: string[];
   updateSnapshots?: boolean;
   hostScript?: string;
+  installDir?: string;
   fakeHost?: boolean;
   conformance?: boolean;
   capabilityCatalog?: string;
@@ -172,6 +175,12 @@ function parse(argv: readonly string[]): Parsed {
         const value = next();
         if (value === undefined) return { files, options, error: "--host-script needs a value" };
         options.hostScript = value;
+        break;
+      }
+      case "--install-dir": {
+        const value = next();
+        if (value === undefined) return { files, options, error: "--install-dir needs a value" };
+        options.installDir = value;
         break;
       }
       case "--conformance":
@@ -337,7 +346,12 @@ async function main(): Promise<number> {
   const grep = pick(options.grep, config.grep);
   const capabilities = pick(options.capabilities, config.capabilities);
   const hostScript = pick(options.hostScript, cfgPath(config.hostScript));
-  const installDir = cfgPath(config.installDir);
+  // CLI paths stay relative to the working directory; config paths were
+  // already resolved against the config file's directory by cfgPath.
+  const installDir = pick(
+    options.installDir === undefined ? undefined : resolve(options.installDir),
+    cfgPath(config.installDir),
+  );
 
   // The fake host is opt-in and explicit at every level: a CLI flag, a
   // config "host", or nothing — and nothing means real. Silently substituting
