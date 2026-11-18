@@ -92,7 +92,24 @@ export class Expectation<T> {
 
   /** Asserts a subset of the value's own enumerable properties. */
   toMatchObject(expected: Record<string, unknown>): void {
-    toMatchObject(this.#actual, expected);
+    let mismatch: AssertionError | undefined;
+    try {
+      toMatchObject(this.#actual, expected);
+    } catch (error) {
+      if (!(error instanceof AssertionError)) {
+        throw error;
+      }
+      mismatch = error;
+    }
+    if (this.#negated) {
+      if (mismatch === undefined) {
+        this.#fail(`to match ${show(expected)}`);
+      }
+      return;
+    }
+    if (mismatch !== undefined) {
+      throw mismatch;
+    }
   }
 
   toBeDefined(): void {
