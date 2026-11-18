@@ -36,7 +36,12 @@ on:
   push:
     tags:
       - "v*"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      github_packages_version:
+        description: "npmjs version to mirror to GitHub Packages (empty = no sync)"
+        required: false
+        default: ""
   pull_request:
     paths:
       - ".github/workflows/publish.yml"
@@ -200,3 +205,50 @@ jobs:
         env:
           EXPECTED_SHASUM: ${{ needs.verify.outputs.shasum }}
         run: mise exec -- node scripts/stage-publish.js "$RUNNER_TEMP"/package/*.tgz --expect-shasum "$EXPECTED_SHASUM"
+
+  # Mirrors an already-published npmjs version to GitHub Packages (issue
+  # #23). Manual dispatch only, never on tag push: npmjs stays canonical and
+  # a version that is not live there is refused by the script. Idempotent —
+  # an already-mirrored version is a no-op.
+  sync-github-packages:
+    if: github.event_name == 'workflow_dispatch' && inputs.github_packages_version != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Install toolchain
+        uses: jdx/mise-action@v2
+        with:
+          version: 2026.9.12
+          install: true
+
+      - name: Pin the npm CLI
+        run: |
+          mise exec -- npm install -g "npm@$NPM_CLI_VERSION"
+          actual=$(mise exec -- npm --version)
+          if [ "$actual" != "$NPM_CLI_VERSION" ]; then
+            echo "::error::npm is $actual after installing $NPM_CLI_VERSION"
+            exit 1
+          fi
+          cli="$(mise exec -- npm root -g)/npm/bin/npm-cli.js"
+          if [ "$(mise exec -- node "$cli" --version)" != "$NPM_CLI_VERSION" ]; then
+            echo "::error::$cli is not npm $NPM_CLI_VERSION"
+            exit 1
+          fi
+          echo "NPM_CLI_JS=$cli" >> "$GITHUB_ENV"
+
+      - name: Authenticate to GitHub Packages
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '//npm.pkg.github.com/:_authToken=%s\n' "$NODE_AUTH_TOKEN" >> "$HOME/.npmrc"
+
+      - name: Mirror the published version
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: mise exec -- node scripts/sync-github-packages.js "${{ inputs.github_packages_version }}"
