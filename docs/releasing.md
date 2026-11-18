@@ -224,7 +224,8 @@ First exercised for real by `1.0.0` (2026-11-18): tag `v1.0.0` on the
 `release/1.0.0 -> main` merge commit staged `@ido-bata/ae-test@1.0.0`
 under `latest` with the gate-checked shasum, and a maintainer approved it
 with 2FA. `npm view` confirmed `dist.shasum`/`dist.integrity` and
-`latest: 1.0.0`; the GitHub Packages mirror ran in the same dispatch.
+`latest: 1.0.0`; the GitHub Packages mirror ran as a separate
+`workflow_dispatch` (run 44288244482).
 
 ## GitHub Packages mirror (optional, post-publish)
 
