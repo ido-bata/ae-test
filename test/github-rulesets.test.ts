@@ -85,9 +85,10 @@ describe("release tags", () => {
     expect(tags.conditions).toEqual({ ref_name: { include: ["refs/tags/v*"], exclude: [] } });
     expect(tags.rules.map((r) => r.type).sort()).toEqual(["deletion", "non_fast_forward", "update"]);
     expect(rule(tags, "creation")).toBeUndefined();
+    // update_allows_force_push is not an API parameter for tag rulesets;
+    // the non_fast_forward rule already blocks force-push tag updates.
     expect(rule(tags, "update")?.parameters).toEqual({
       update_allows_fetch_and_merge: false,
-      update_allows_force_push: false,
     });
     expect(tags.bypass_actors).toEqual([]);
   });

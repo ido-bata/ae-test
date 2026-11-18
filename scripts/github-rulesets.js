@@ -59,7 +59,7 @@ export function desiredRulesets(checks = REQUIRED_CHECKS) {
         { type: "non_fast_forward" },
         {
           type: "update",
-          parameters: { update_allows_fetch_and_merge: false, update_allows_force_push: false },
+          parameters: { update_allows_fetch_and_merge: false },
         },
       ],
     },
