@@ -60,7 +60,6 @@ export class SnapshotStore {
   readonly #update: boolean;
   readonly #artifactDir: string | undefined;
   readonly #artifacts: Artifact[] = [];
-  #matched = 0;
   #diffSequence = 0;
 
   constructor(options: SnapshotStoreOptions) {
@@ -74,14 +73,6 @@ export class SnapshotStore {
   /** Diff artifacts written by failed comparisons in this test. */
   get artifacts(): readonly Artifact[] {
     return this.#artifacts;
-  }
-
-  get matched(): number {
-    return this.#matched;
-  }
-
-  get updating(): boolean {
-    return this.#update;
   }
 
   match(
@@ -120,7 +111,6 @@ export class SnapshotStore {
     }
 
     if (baseline === digest) {
-      this.#matched += 1;
       return Promise.resolve();
     }
 
@@ -190,7 +180,6 @@ export class SnapshotStore {
         ),
       );
     }
-    this.#matched += 1;
     return Promise.resolve();
   }
 
@@ -300,6 +289,5 @@ export class SnapshotStore {
     mkdirSync(this.#dir, { recursive: true });
     copyFileSync(frame.path, pngPath);
     writeFileSync(shaPath, `${digest}\n`, "utf-8");
-    this.#matched += 1;
   }
 }
