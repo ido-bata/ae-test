@@ -95,6 +95,18 @@ host を quit させたか」であり host の生死の証明ではない: `unk
 green を real host の verified と読み替えてはならない
 （[verification.md](verification.md) の taxonomy が正本）。
 
+### Capability evidence の粒度
+
+conformance record の `result` / `classification` / `verification` は **test
+record に対する判定**であり、`capabilityIds` はその test が evidence を
+提供する対象の **宣言**である。test が PASS したことは「宣言した全
+capability が個別に実機検証された」ことを意味しない — test 内で実際に呼ば
+れた operation と宣言の一致は spec 作者の責任であり、report はそれを機械
+的に証明しない。capability 単位の coverage は「その capability を宣言し、
+かつ real host で PASS した test の和集合」として読む。個別 operation の
+独立した実機保証が必要な場合は、capability ごと（または検証したい operation
+ごと）に test を分割する。
+
 ## 依存ポリシー
 
 - `@ido-bata/ae-a8n` は exact version pin（例 `0.2.0`）。
