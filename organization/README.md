@@ -59,3 +59,7 @@ agent capability向上によりSkillなしで同等以上のoutcomeが安定し�
 - remove_when
 
 を必要な粒度で確認します。
+
+## ソフトウェア全体の品質
+
+組織モデルの成立とソフトウェアの要求充足・最適性を分離する。[system-quality](../skills/system-quality/SKILL.md) が要求保存、代替構成、アンチケース排除、改善比較を結び付け、design-refinement / correctness-assurance / quality-gate / policy-evaluationが各責務を実現する。組織のTLA+モデルはソフトウェア実装の最適性を証明しない。
