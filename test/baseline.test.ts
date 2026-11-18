@@ -200,4 +200,24 @@ describe("snapshot baselines", () => {
     expect(envNames).toContain("fake-in-process");
     expect(envNames.some((name) => name.startsWith("other-transport-"))).toBe(true);
   });
+
+  it("refuses two snapshot names that sanitize to the same baseline file", async () => {
+    // "a/b" and "a-b" both become "a-b" after sanitization: without the
+    // collision check they would silently share one baseline.
+    const spec = writeSpec(
+      "collision.spec.ts",
+      `
+test("colliding names", async ({ ae, fixture, expectFrame }) => {
+  const project = await ae.openProject(fixture.project("fixture.aep"));
+  const comp = await project.comp("Main");
+  const frame = await comp.renderFrame(0);
+  await expectFrame(frame).toMatchSnapshot("a/b");
+  await expectFrame(frame).toMatchSnapshot("a-b");
+});
+`,
+    );
+    const summary = await run(options(spec, "collision", { updateSnapshots: true }));
+    expect(summary.results[0]?.status).toBe("failed");
+    expect(summary.results[0]?.failure?.message).toMatch(/share one baseline/);
+  });
 });

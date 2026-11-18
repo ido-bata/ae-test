@@ -549,6 +549,21 @@ describe("evidence aggregation", () => {
     );
   });
 
+  it("hashes binaries larger than the read chunk identically", () => {
+    // The streaming hash must agree with a whole-file digest across chunk
+    // boundaries — plugin binaries are far bigger than one read.
+    const bigPath = join(dir, "big.plugin");
+    const bytes = Buffer.alloc(8 * 1024 * 1024 + 12345, 7);
+    writeFileSync(bigPath, bytes);
+
+    const report = reportFor([result()], { pluginBinaries: [bigPath] });
+
+    expect(report.binaries.plugin[0]?.bytes).toBe(bytes.byteLength);
+    expect(report.binaries.plugin[0]?.sha256).toBe(
+      createHash("sha256").update(bytes).digest("hex"),
+    );
+  });
+
   it("groups records into an os × AE-version matrix", () => {
     const report = reportFor([
       result(),
