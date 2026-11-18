@@ -57,10 +57,9 @@ export function desiredRulesets(checks = REQUIRED_CHECKS) {
       rules: [
         { type: "deletion" },
         { type: "non_fast_forward" },
-        {
-          type: "update",
-          parameters: { update_allows_fetch_and_merge: false },
-        },
+        // No parameters: the API does not return update-rule parameters on
+        // read-back, so a desired parameter could never converge.
+        { type: "update" },
       ],
     },
     {
