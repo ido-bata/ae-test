@@ -224,6 +224,33 @@ Not verified before the first real use: staging through OIDC against the
 real registry. ae-a8n's first staged release (ido-bata/ae-a8n#14) exercises
 it first; ae-test should follow only after that has worked.
 
+## GitHub Packages mirror (optional, post-publish)
+
+npmjs.com is the canonical registry. GitHub Packages (`npm.pkg.github.com`)
+is an additional mirror so the package appears on the repository's Packages
+tab; nothing installs from it by default.
+
+After a version is live on npmjs — i.e. after `npm stage approve` has made
+it installable — mirror it with the `sync-github-packages` workflow:
+
+```bash
+gh workflow run publish.yml -f github_packages_version=<version>
+```
+
+or locally, with a token that has `write:packages` configured for
+`npm.pkg.github.com`:
+
+```bash
+node scripts/sync-github-packages.js <version>
+```
+
+`scripts/sync-github-packages.js` refuses a version that is not on npmjs,
+skips one already mirrored (safe to re-run), and publishes the exact
+`npm pack` tarball of the npmjs version, so both registries serve identical
+bytes. It never runs on tag push and never blocks the npmjs flow. The first
+publish links the package to this repository for the Packages tab; check the
+linkage once after the first mirror.
+
 ## Not here yet
 
 - Provenance: the repository is public now, so npm could attest the
