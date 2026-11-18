@@ -9,9 +9,9 @@ fake host with no After Effects installed.
 # This example ships inside the package — copy it into your project:
 cp -R node_modules/@ido-bata/ae-test/examples/consumer ./my-ae-tests
 cd my-ae-tests
-npm install --save-dev @ido-bata/ae-test@next
-# or, before the version is published:
-npm install --save-dev /path/to/ae-test-0.2.0-beta.2.tgz
+npm install --save-dev @ido-bata/ae-test
+# or, from a packed tarball:
+npm install --save-dev /path/to/ae-test-<version>.tgz
 
 npm run test:fake -- --update-snapshots   # record baselines once
 npm run test:fake                          # compare

@@ -1,1 +1,1 @@
-export const AE_TEST_VERSION = "0.2.0-beta.2";
+export const AE_TEST_VERSION = "1.0.0";
