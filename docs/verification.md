@@ -67,8 +67,9 @@ runs in CI or the fake-host lane. Run explicitly with
 disposable comp on the untitled project (no `.aep` needed — the committed
 `fixtures/fixture.aep` is a fake-host placeholder) and exercises 29
 capability declarations (17 distinct `ae.operation.*` IDs) across project/comp/layer reads, writes,
-an effect parameter round-trip and pixel-responsive renders. First run uses
-`--update-snapshots`; later runs compare against the env-scoped baseline.
+an effect parameter round-trip and pixel-responsive renders. The render
+baseline is committed and environment-scoped: plain runs compare against
+it, and `--update-snapshots` is reserved for deliberate re-recording.
 
 Provision the real-host consumer from the spec and config shipped inside
 the installed package — `node_modules/@ido-bata/ae-test/examples/consumer/`

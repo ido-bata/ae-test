@@ -38,6 +38,9 @@ const COMP = {
 const TEXT = {
   text: "AE",
   name: "Text 1",
+  // PostScript name: without it AE picks a machine-specific default font and
+  // the recorded render baseline stops being comparable across machines.
+  font: "Helvetica",
   fontSize: 32,
   fillColor: [1, 0, 0],
   position: [32, 32],
@@ -84,7 +87,7 @@ test("reads project, composition and layer state", async ({
     "ae.operation.comp.info",
     "ae.operation.comp.list-layers",
     "ae.operation.layer.add-text",
-    "ae.operation.layer.get-layer",
+    "ae.operation.comp.get-layer",
     "ae.operation.layer.get-transform",
   ],
 });

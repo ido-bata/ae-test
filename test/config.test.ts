@@ -215,6 +215,22 @@ describe("CLI with config and discovery", () => {
     expect(cli(["--fake-host", "--real-host"], project).status).toBe(2);
   });
 
+  it("rejects an option token or empty value as --install-dir", () => {
+    const project = join(dir, "project");
+    mkdirSync(project, { recursive: true });
+    for (const args of [
+      ["--install-dir", "--fake-host"],
+      ["--install-dir", ""],
+    ]) {
+      const result = cli(args, project);
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain("--install-dir needs a path value");
+    }
+    // A path that merely starts with a dash inside a directory is fine.
+    const result = cli(["--install-dir", "./-custom-install", "--fake-host"], project);
+    expect(result.stderr).not.toContain("--install-dir needs a path value");
+  });
+
   it("exits 2 for a missing explicit --config", () => {
     const result = cli(["--config", join(dir, "nope.json")], dir);
     expect(result.status).toBe(2);

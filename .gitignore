@@ -11,3 +11,6 @@ coverage/
 
 # per-worktree lifecycle state (see scripts/worktree/)
 .worktree.env
+
+# release tarballs produced by npm pack during QA
+*.tgz
