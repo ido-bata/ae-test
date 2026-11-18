@@ -83,6 +83,11 @@ publication contract is different — registry `dist.shasum` is SHA-1 and
 `dist.integrity` is SHA-512 SRI; `scripts/publish-gate.js` computes SHA-1 and
 `scripts/stage-publish.js --expect-shasum` enforces it. The current
 candidate's SHA-1/SHA-256/SHA-512 are recorded in the `1af3fd4` row.
+Commits after `1af3fd4` (`b429d11` docs, `e317f29` release-tooling + docs
+via #108/#109) do not touch `files` in package.json (`dist`,
+`examples/consumer`, `CHANGELOG.md`): `npm pack` at `e317f29` reproduces the
+same sha1 `25757a0f…` / sha256 `525434a6…`, so the `1af3fd4` evidence —
+including the real-host runs — carries to the merged release unchanged.
 
 ### Local console-session lane
 
