@@ -1,5 +1,36 @@
 # Changelog
 
+## 1.1.0
+
+Minor release on the 1.x contract frozen by [docs/api.md](docs/api.md):
+additive changes only. Depends on `@ido-bata/ae-a8n` `0.2.0` exactly
+(unchanged).
+
+### Added
+
+- `--install-dir <dir>` CLI flag: explicit After Effects installation
+  directory, overriding config `installDir`. CLI paths resolve against
+  the working directory (#112).
+- `conformance/real-host/` real-host conformance suite — **repository
+  tooling, not included in the npm package** (`files` ships only `dist`,
+  `examples/consumer`, `CHANGELOG.md`). It exercises the scripting
+  domain of ae-a8n's built-in dispatch table through the public API on
+  a disposable project and produces `real-host-verified` conformance
+  records. Verified on macOS arm64 + After Effects 2026 (26.5.3x9
+  build 9): 4/4 pass across record→compare runs (#112).
+
+### Fixed
+
+- Interrupted launches no longer lose the launched session from
+  evidence: a session that resolved during an aborted launch is still
+  recorded for facts, artifacts and conformance provenance (#113).
+- Plugin/SDK binary hashing streams in 8 MiB chunks instead of reading
+  whole files into memory (#113).
+- Conformance matrix cell keys are JSON tuples, removing any chance of
+  environment-string collisions (#113).
+- Snapshot names that sanitize to the same baseline filename now fail
+  explicitly instead of silently sharing a baseline (#113).
+
 ## 1.0.0
 
 First stable release, published under the `latest` dist-tag. Depends on

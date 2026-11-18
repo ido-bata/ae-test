@@ -160,6 +160,13 @@ test still pays one AE launch, so the suite is four launches, not a smoke
 test. SDK/native-plugin capabilities stay upstream-owned (ae-devtools) and
 are not claimed here.
 
+The suite lives in this repository only: `conformance/` is not part of the
+npm package (`files` ships `dist`, `examples/consumer` and `CHANGELOG.md`),
+so it does not exist under `node_modules/@ido-bata/ae-test/` in a consumer
+install. It produces ae-test/ae-devtools conformance evidence; it is not a
+template for consumer capability claims — consumers write their own specs
+against their own capabilities.
+
 Use **match names** (`ADBE Gaussian Blur 2`, `ADBE Gaussian Blur 2-0001`), not
 display names: display names are localised. ae-a8n's skill and README cover
 the After Effects side ([ae-a8n](https://www.npmjs.com/package/@ido-bata/ae-a8n)).
