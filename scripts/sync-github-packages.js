@@ -23,11 +23,20 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { isEntryPoint } from "./release-tag.js";
-import { resolveNpmCli, runNpm } from "./stage-publish.js";
+import { NPMJS_REGISTRY, resolveNpmCli, runNpm } from "./stage-publish.js";
 
-export const NPMJS_REGISTRY = "https://registry.npmjs.org";
 export const GITHUB_PACKAGES_REGISTRY = "https://npm.pkg.github.com";
 export const PACKAGE_NAME = "@ido-bata/ae-test";
+
+// A scoped `@<scope>:registry` in .npmrc beats the generic --registry flag,
+// so every registry-targeted call pins the scope registry through the
+// environment as well.
+const SCOPE = PACKAGE_NAME.split("/")[0];
+
+/** @param {string} registry */
+function registryEnv(registry) {
+  return { [`npm_config_${SCOPE}:registry`]: registry };
+}
 
 /**
  * What the sync should do for one version, given registry facts.
@@ -49,17 +58,46 @@ export function plan(version, facts) {
   return { action: "publish", reason: `${PACKAGE_NAME}@${version} will be mirrored to GitHub Packages` };
 }
 
-/** @param {string} registry @param {string} version @param {string} cli */
-function registryHas(cli, registry, version) {
-  const result = runNpm(cli, [
-    "view",
-    `${PACKAGE_NAME}@${version}`,
-    "version",
-    "--registry",
-    registry,
-    "--json",
-  ]);
-  return result.status === 0 && result.stdout.trim() !== "";
+/**
+ * Asks one registry whether the version exists, returning its
+ * dist.integrity. The answer is only trusted when the reported tarball is
+ * actually hosted on the registry that was asked: a scoped-registry
+ * redirect would otherwise report the other registry's facts as this one's.
+ *
+ * @param {string} cli
+ * @param {string} registry
+ * @param {string} version
+ */
+function registryInfo(cli, registry, version) {
+  const result = runNpm(
+    cli,
+    [
+      "view",
+      `${PACKAGE_NAME}@${version}`,
+      "dist.integrity",
+      "dist.tarball",
+      "--registry",
+      registry,
+      "--json",
+    ],
+    registryEnv(registry),
+  );
+  if (result.status !== 0 || result.stdout.trim() === "") {
+    return { present: false, integrity: /** @type {string | undefined} */ (undefined) };
+  }
+  /** @type {{ "dist.integrity"?: string, "dist.tarball"?: string }} */
+  const data = JSON.parse(result.stdout);
+  const tarball = data["dist.tarball"];
+  const host = new URL(registry).host;
+  if (typeof tarball !== "string" || new URL(tarball).host !== host) {
+    fail(
+      `${PACKAGE_NAME}@${version}: ${registry} answered but its tarball is hosted at ${tarball ?? "an unknown URL"}; a scoped registry setting redirected the query — fix @${SCOPE.slice(1)}:registry in .npmrc`,
+    );
+  }
+  return {
+    present: true,
+    integrity: typeof data["dist.integrity"] === "string" ? data["dist.integrity"] : undefined,
+  };
 }
 
 function fail(message) {
@@ -86,15 +124,25 @@ function main() {
   }
   const cli = resolved.cli;
 
-  const decision = plan(version, {
-    onNpmjs: registryHas(cli, NPMJS_REGISTRY, version),
-    onGithub: registryHas(cli, GITHUB_PACKAGES_REGISTRY, version),
-  });
+  const npmjs = registryInfo(cli, NPMJS_REGISTRY, version);
+  const github = registryInfo(cli, GITHUB_PACKAGES_REGISTRY, version);
+  const decision = plan(version, { onNpmjs: npmjs.present, onGithub: github.present });
   console.log(decision.reason);
   if (decision.action === "refuse") {
     fail(decision.reason);
   }
-  if (decision.action !== "publish") {
+  if (decision.action === "skip") {
+    // "Already mirrored" is only true when the mirrored bytes are the
+    // published bytes; a divergent copy must not pass silently.
+    if (
+      npmjs.integrity !== undefined &&
+      github.integrity !== undefined &&
+      npmjs.integrity !== github.integrity
+    ) {
+      fail(
+        `${PACKAGE_NAME}@${version} exists on both registries with different dist.integrity (${npmjs.integrity} on npmjs, ${github.integrity} on GitHub Packages); refusing to treat the mirror as current`,
+      );
+    }
     return;
   }
   if (dryRun) {
@@ -104,34 +152,27 @@ function main() {
 
   const dir = mkdtempSync(join(tmpdir(), "ae-test-ghpkg-"));
   try {
-    // Pin the registry the existence check used: without it `npm pack` could
-    // resolve the spec against an ambient mirror and publish bytes that are
-    // not the npmjs artifact.
-    const integrity = runNpm(cli, [
-      "view",
-      `${PACKAGE_NAME}@${version}`,
-      "dist.integrity",
-      "--registry",
-      NPMJS_REGISTRY,
-      "--json",
-    ]);
-    if (integrity.status !== 0) {
-      fail(`npm view dist.integrity failed: ${integrity.stderr.trim()}`);
-    }
-    const expected = JSON.parse(integrity.stdout.trim());
-    if (typeof expected !== "string" || !expected.startsWith("sha512-")) {
+    const expected = npmjs.integrity;
+    if (expected === undefined || !expected.startsWith("sha512-")) {
       fail(`npmjs reports no usable dist.integrity for ${PACKAGE_NAME}@${version}`);
     }
 
-    const packed = runNpm(cli, [
-      "pack",
-      `${PACKAGE_NAME}@${version}`,
-      "--registry",
-      NPMJS_REGISTRY,
-      "--pack-destination",
-      dir,
-      "--json",
-    ]);
+    // Pin the registry the existence check used: without it `npm pack` could
+    // resolve the spec against an ambient mirror and publish bytes that are
+    // not the npmjs artifact.
+    const packed = runNpm(
+      cli,
+      [
+        "pack",
+        `${PACKAGE_NAME}@${version}`,
+        "--registry",
+        NPMJS_REGISTRY,
+        "--pack-destination",
+        dir,
+        "--json",
+      ],
+      registryEnv(NPMJS_REGISTRY),
+    );
     if (packed.status !== 0) {
       fail(`npm pack failed: ${packed.stderr.trim()}`);
     }
@@ -146,12 +187,11 @@ function main() {
         `packed tarball integrity ${actual} does not match npmjs dist.integrity ${expected}; refusing to mirror bytes that are not the published artifact`,
       );
     }
-    const published = runNpm(cli, [
-      "publish",
-      join(dir, tarball),
-      "--registry",
-      GITHUB_PACKAGES_REGISTRY,
-    ]);
+    const published = runNpm(
+      cli,
+      ["publish", join(dir, tarball), "--registry", GITHUB_PACKAGES_REGISTRY],
+      registryEnv(GITHUB_PACKAGES_REGISTRY),
+    );
     if (published.status !== 0) {
       fail(`npm publish to GitHub Packages failed: ${published.stderr.trim()}`);
     }

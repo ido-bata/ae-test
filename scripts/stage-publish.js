@@ -36,6 +36,7 @@ import { checkDistTag, distTagFor, isEntryPoint } from "./release-tag.js";
 export { checkDistTag, distTagFor };
 
 export const MINIMUM_NPM = "11.15.0";
+export const NPMJS_REGISTRY = "https://registry.npmjs.org";
 
 /** @param {string} a @param {string} b */
 export function versionAtLeast(a, b) {
@@ -141,9 +142,13 @@ export function resolveNpmCli(options = {}) {
  *
  * @param {string} cli
  * @param {string[]} args
+ * @param {Record<string, string>} [env] extra environment for the npm process
  */
-export function runNpm(cli, args) {
-  return spawnSync(process.execPath, [cli, ...args], { encoding: "utf-8" });
+export function runNpm(cli, args, env) {
+  return spawnSync(process.execPath, [cli, ...args], {
+    encoding: "utf-8",
+    env: env === undefined ? process.env : { ...process.env, ...env },
+  });
 }
 
 /** @param {string} message */
@@ -163,6 +168,22 @@ function main() {
   const expected = args[expectIndex + 1];
   args.splice(expectIndex, 2);
   const dryRun = args.includes("--dry-run");
+  // Passthrough args must not override the values this script verified:
+  // npm takes the last scalar option, so a trailing `--tag=next` would stage
+  // under a tag the dist-tag check never approved. `--registry` stays
+  // allowed: tests point npm at a recording registry through it, and an
+  // explicit registry choice is the operator's, not a verified value.
+  const overridden = args.filter(
+    (arg) =>
+      ["--tag", "--access", "--provenance"].includes(arg) ||
+      /^(--tag|--access|--provenance)=/.test(arg),
+  );
+  if (overridden.length > 0) {
+    fail(`${overridden[0]} cannot be overridden; the tag, access and provenance are fixed by this script`);
+  }
+  const registryOverride = args.some(
+    (arg) => arg === "--registry" || arg.startsWith("--registry="),
+  );
 
   const resolved = resolveNpmCli();
   if (!resolved.ok) fail(resolved.error);
@@ -191,18 +212,35 @@ function main() {
   if (!tagCheck.ok) fail(/** @type {{ error: string }} */ (tagCheck).error);
   const tag = /** @type {{ tag: string }} */ (tagCheck).tag;
 
-  const result = runNpm(cli, [
-    "stage",
-    "publish",
-    tarball,
-    "--tag",
-    tag,
-    "--access",
-    "public",
-    "--provenance=false",
-    "--json",
-    ...args,
-  ]);
+  // A scoped `@<scope>:registry` in .npmrc beats the generic --registry flag
+  // (npm resolves the scope first), so pin the scope registry through the
+  // environment as well: staging must land on npmjs unless the caller
+  // explicitly chose another registry (the test suite's recording registry).
+  const scope = manifest.name.startsWith("@")
+    ? manifest.name.slice(0, manifest.name.indexOf("/"))
+    : undefined;
+  const scopeEnv =
+    scope === undefined || registryOverride
+      ? undefined
+      : { [`npm_config_${scope}:registry`]: NPMJS_REGISTRY };
+  const result = runNpm(
+    cli,
+    [
+      "stage",
+      "publish",
+      tarball,
+      "--tag",
+      tag,
+      "--access",
+      "public",
+      "--provenance=false",
+      "--registry",
+      NPMJS_REGISTRY,
+      "--json",
+      ...args,
+    ],
+    scopeEnv,
+  );
   process.stderr.write(result.stderr);
   if (result.status !== 0) {
     fail(`npm stage publish exited ${result.status}`);
