@@ -220,9 +220,11 @@ If `stage` fails after the gate approved, check
 get staged cannot be staged again. Re-run the failed job of that same run; do
 not move the tag to another commit — that is a new version.
 
-Not verified before the first real use: staging through OIDC against the
-real registry. ae-a8n's first staged release (ido-bata/ae-a8n#14) exercises
-it first; ae-test should follow only after that has worked.
+First exercised for real by `1.0.0` (2026-11-18): tag `v1.0.0` on the
+`release/1.0.0 -> main` merge commit staged `@ido-bata/ae-test@1.0.0`
+under `latest` with the gate-checked shasum, and a maintainer approved it
+with 2FA. `npm view` confirmed `dist.shasum`/`dist.integrity` and
+`latest: 1.0.0`; the GitHub Packages mirror ran in the same dispatch.
 
 ## GitHub Packages mirror (optional, post-publish)
 
