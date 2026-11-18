@@ -73,6 +73,24 @@ describe("versionAtLeast", () => {
   });
 });
 
+describe("distTagFor / checkDistTag", () => {
+  it("defaults an absent publishConfig.tag to latest", () => {
+    expect(stage.distTagFor({ publishConfig: {} })).toBe("latest");
+    expect(stage.distTagFor({})).toBe("latest");
+    expect(stage.checkDistTag({ version: "1.0.0", publishConfig: {} })).toEqual({ ok: true, tag: "latest" });
+  });
+
+  it("rejects an explicitly present but unusable tag instead of defaulting it", () => {
+    // `?? "latest"` used to turn `tag: null` into latest here while
+    // check-release.js rejected the same manifest; the shared policy must
+    // agree with the gate.
+    for (const tag of [null, 42, "", {}]) {
+      expect(stage.distTagFor({ publishConfig: { tag } })).toBeNull();
+      expect(stage.checkDistTag({ version: "1.0.0", publishConfig: { tag } }).ok).toBe(false);
+    }
+  });
+});
+
 describe("resolveNpmCli", () => {
   /** A file system that has exactly these files; symlinks as a map. */
   function fs(files: string[], links: Record<string, string> = {}) {

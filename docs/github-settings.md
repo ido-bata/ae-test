@@ -30,7 +30,7 @@ Publishing). The read-only default does not take that away: a job's own
 
 | Ruleset | Refs | Rules |
 | --- | --- | --- |
-| `main-branch-protection` | `refs/heads/main` | pull request required, merge commit only, 0 approvals for now, review threads resolved; checks `check` (Linux) and `release-tooling-windows` (Windows) from GitHub Actions; no force push; no deletion; no linear-history rule; no bypass |
+| `main-branch-protection` | `refs/heads/main` | pull request required, merge commit only, 0 approvals for now, review threads resolved; checks `check` (Linux) and `release-tooling-windows` (Windows) from GitHub Actions, and the branch must be up to date before merging; no force push; no deletion; no linear-history rule; no bypass |
 | `release-tag-protection` | `refs/tags/v*` | no update (a tag is never moved), no force push, no deletion; creating a tag is allowed; no bypass |
 
 ```bash
@@ -38,11 +38,13 @@ node scripts/github-rulesets.js                 # dry run: prints what would cha
 node scripts/github-rulesets.js --apply         # create or update, then read back
 ```
 
-It needs `gh` logged in as a repository admin. It refuses to apply while
-the repository is private (GitHub Free does not enforce rulesets there). It
+It needs `gh` logged in as a repository admin. The repository is public, so
+the rulesets are enforceable; the script still refuses to apply if it ever
+is not (GitHub Free does not enforce rulesets on a private repository). It
 also refuses if a required check did not run, from GitHub Actions, on the
-latest pull request. It matches rulesets by name and target, so a second run
-changes nothing. Other rulesets are left alone.
+default branch head — the commit the rules actually gate. It matches
+rulesets by name and target, so a second run changes nothing. Other
+rulesets are left alone.
 
 The required checks name the CI jobs, not the workflow. If a job in
 `.github/workflows/ci.yml` is renamed, change `REQUIRED_CHECKS` in the same
