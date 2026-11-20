@@ -1,6 +1,6 @@
 {
   "name": "@ido-bata/ae-test",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Playwright-like tests for After Effects plugins and scripts, on top of @ido-bata/ae-a8n.",
   "type": "module",
   "license": "MIT",
