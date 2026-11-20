@@ -1,5 +1,38 @@
 # Changelog
 
+## 1.2.0
+
+Patch-level content on the 1.x contract: runner correctness fixes from
+#121. Depends on `@ido-bata/ae-a8n` `0.2.0` exactly (unchanged — the pin
+moves only after a published ae-a8n carries proven Windows owned-session
+evidence).
+
+### Fixed
+
+- **Matrix keys are unambiguous** (#121): environment matrix entries now
+  key on `JSON.stringify([os, osVersion, arch, aeVersion])`, so versions
+  containing separators can no longer collide.
+- **Teardown is guaranteed** (#121): artifact/session-fact collection
+  failures can no longer skip session teardown; collection errors are
+  recorded without aborting cleanup.
+- **Vanished render files are skipped, not failed** (#121): a render
+  output that disappears between render and collect no longer fails the
+  test run.
+- Delivery docs point at the `release/1.2.0` integration line (#121).
+
+### Verification
+
+- `fake/mock only` for the changed paths (unit + fake-host suites green
+  in CI); the macOS real-host evidence recorded for 1.1.0 covers
+  unchanged code paths.
+- **Not verified**: Windows real-host run of the published package —
+  attempted 2026-11-20 against AE 2027; `@ido-bata/ae-a8n@0.2.0` cannot
+  establish an owned Windows session (spawns a second AfterFX that never
+  answers the readiness probe, or refuses `attached` when a user AE is
+  already running). Both outcomes are honest failures, never false
+  green. Windows support awaits an ae-a8n release with proven Windows
+  owned-session evidence (#19, #21).
+
 ## 1.1.0
 
 Minor release on the 1.x contract frozen by [docs/api.md](docs/api.md):
