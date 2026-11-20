@@ -1,5 +1,52 @@
 # Changelog
 
+## 1.2.0
+
+Patch-level content on the 1.x contract: runner correctness fixes from
+#121, plus Windows real-host acceptance evidence for the packed
+consumer and the real-host conformance suite (#127, #128; repository
+tooling, not shipped in the tarball). Depends on `@ido-bata/ae-a8n`
+`0.2.0` exactly (unchanged — the pin moves only after a published
+ae-a8n carries proven Windows owned-session evidence).
+
+### Fixed
+
+- **Matrix keys are unambiguous** (#121): environment matrix entries now
+  key on `JSON.stringify([os, osVersion, arch, aeVersion])`, so versions
+  containing separators can no longer collide.
+- **Teardown is guaranteed** (#121): artifact/session-fact collection
+  failures can no longer skip session teardown; collection errors are
+  recorded without aborting cleanup.
+- **Vanished render files are skipped, not failed** (#121): a render
+  output that disappears between render and collect no longer fails the
+  test run.
+- Delivery docs point at the `release/1.2.0` integration line (#121).
+
+### Added
+
+- **Windows real-host conformance baseline** (#127): committed
+  `script-invocation-win32-x64-ae-26.5.3x9-9` snapshot baseline for the
+  repo-only `conformance/real-host/` suite, recorded on Windows 11 x64
+  with AE 2026. The suite itself is not included in the npm tarball.
+
+### Verification
+
+- `npm run check`: 245 tests green; packed-tarball consumer smoke green.
+- **Windows real-host — verified** (#19, #21; evidence in
+  `docs/verification.md`): a fresh consumer installed the packed
+  `ido-bata-ae-test-1.2.0.tgz` on Windows 11 (Node v26.13.1, AE 2026
+  `26.5.3x9` build 9 via `installDir`) and ran the owned-session lane
+  end to end — snapshot record → compare → compare while a foreign AE
+  2027 was running — 3/3 pass, `cleanup.status=ok`, `quit=true`, no
+  AfterFX left behind. The real-host conformance suite passed 4/4
+  against the committed win32 baseline with all records
+  `real-host-verified`/`PASS`, and fail-closed paths
+  (`HostNotOwnedError` on foreign AE, `HostLeftRunning` on mid-test
+  instance changes) were observed behaving as designed.
+- **Still unverified**: the isolated session lane (#19 T058, awaiting
+  human machine setup), SDK native plug-in lifecycle (#21, blocked
+  upstream), AE 2027 and ARM64 Windows, and a macOS re-run at 1.2.0.
+
 ## 1.1.0
 
 Minor release on the 1.x contract frozen by [docs/api.md](docs/api.md):

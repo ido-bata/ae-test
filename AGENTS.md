@@ -37,7 +37,7 @@ The layering rule: `ae-test → ae-a8n → After Effects`. Do not reach past `ae
 
 ## Delivery
 
-- `main` = released state. The current integration line is the open `release/*` branch (currently `release/1.1.0`); independent ticket PRs target that release branch while it is unfrozen. Once a release branch is frozen at a candidate SHA, only release-blocking fixes land — non-blocking tickets wait for the next release line. `release/* -> main` PRs are release-class.
+- `main` = released state. The current integration line is the open `release/*` branch (currently `release/1.2.0`); independent ticket PRs target that release branch while it is unfrozen. Once a release branch is frozen at a candidate SHA, only release-blocking fixes land — non-blocking tickets wait for the next release line. `release/* -> main` PRs are release-class.
 - 1 top-level Issue = 1 number-only branch = 1 ticket PR.
 - Publish the branch and open a **Draft PR** immediately after the first meaningful commit.
 - PR landing is **merge commit only** (squash/rebase disabled at the repository level).
