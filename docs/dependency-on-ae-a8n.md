@@ -3,7 +3,7 @@
 From npm, as one exact published version:
 
 ```json
-"@ido-bata/ae-a8n": "0.2.0"
+"@ido-bata/ae-a8n": "0.5.0"
 ```
 
 - **Exact, not a range.** It is an early-development `0.x` release, and a
@@ -44,7 +44,12 @@ ended.
 
 ## History
 
-- `0.2.0` (this pin) is the `release-0-2-0` train: the static host extension
+- `0.5.0` (this pin) is the `release-0-5-0` train: `AfterEffects.attach`
+  (attach-only API, ae-a8n #269), host script hardening (#265) and the
+  attach-path review fixes (#272/#274). ae-test keeps its owned-session
+  lane as the primary path; the attach hardening matters where a run
+  meets a foreign After Effects.
+- `0.2.0` was the `release-0-2-0` train: the static host extension
   API plus the macOS LaunchServices launch path (ae-a8n #106, fixing the
   dual-process launch of #105) and `readinessTimeoutMs` (#124). The previous
   pin could not prove After Effects ownership on AE 26.5/27.0 — ae-test #52.
