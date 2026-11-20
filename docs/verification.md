@@ -148,8 +148,15 @@ outside the repository, in the project's evidence store
 
 ### Not covered
 
-- Windows: not run. ae-test cannot run there today (ae-a8n reports ownership
-  `unknown` on Windows, and ae-test refuses a session it does not own).
+- Windows: partially covered. The packed consumer smoke spec and the
+  `conformance/real-host/` scripting suite pass on Windows 11 x64 with AE
+  2026 (26.5x89, build 9) — see the 2026-11-21 rows. Still unverified:
+  the isolated session lane, AE 2027, ARM64 Windows, non-English UI, and
+  SDK native plug-ins. Earlier notes saying "ae-a8n reports ownership
+  `unknown` on Windows" are stale: with `installDir` selecting a single
+  installation, ae-a8n establishes `owned` sessions on Windows and ae-test
+  runs against them; a *different* After Effects version running
+  concurrently does not block it (ownership is per-install).
 - Third-party plugins: only After Effects' built-in Gaussian Blur.
 - Long suites: at most four tests per run; one launch and quit per test.
 - Known After Effects-side risks are ae-a8n's, listed in its README: a
@@ -157,3 +164,4 @@ outside the repository, in the project's evidence store
   (not reproduced in 20 runs), a cold launch close to the 180 s readiness
   budget.
 | 2026-11-18 22:1x | `0e43b34` (re-freeze 2: #121 RC review fixes — matrix JSON tuple、teardown-safe artifact collection、`--install-dir` operand 検証、capability ID 修正 `comp.get-layer`、TEXT font 明示、docs 整合; baseline PNG は `0e43b34` で再記録) | `0.2.0` from npm | **pass.** `npm run check`: 245 tests / 21 files green（`c442b43` と tree 同一、baseline/docs commit のみ差分）。`npm pack` tarball: sha1 `84a173aa35ec8f0a978e2c8642deb66cb4ee114f`（npm `dist.shasum` 契約）、sha256 `339b3ca33928d232e60818896804401aa1c3672805c10f9673e7d196b63cd777`、sha512 SRI `sha512-oiTNlQ8wqzgP0R1PJeGrLNaXEZEbtmQPnhBq29bSh7H5CHl1ykel7XTzTROxtST9or02q5/5VIBwOtLVnQdvMw==`、45 files。`0e43b34` で再 pack して sha256 一致を確認（baseline/docs は `files` 対象外、同一内容物）。`check-packed-package.js` green。Fresh external consumer（`/tmp/ae-test-110-acceptance`、新 tarball install）: fake `--update-snapshots`→plain 各 1/1、real `ae-test.real.config.json` `--update-snapshots`→plain 各 1/1（~5.3 s/run）、`cleanup.status=ok`、`quit=true`、AE 残存なし（AE 26.5.3x9 build 9、uid 501、transport `script-invocation`）。`conformance/real-host/` suite を freeze SHA `0e43b34` で実行: `--update-snapshots` で font 変更後の baseline を再記録（commit `0e43b34`）→ plain `--conformance` run で committed baseline と比較し **4/4 pass**（~21 s、1 launch/test）、全 record `real-host-verified`/`PASS`、`conformance.json` ok。`0b70b52` の証拠は本 SHA の証拠として流用していない。未検証: Windows・AE 2027・isolated lane（#19）・SDK native（#21 upstream待ち）。次リリース繰越: snapshot baseline ownership 永続化・case-insensitive alias・store 横断 `--` 衝突・stale render artifacts（#121、#120 review で deferral 合意） |
+| 2026-11-21 01:4x–02:2x JST | `3e55d21`（release/1.2.0 head。suite は repo tooling で tarball 非含有） | `0.2.0` from npm | **pass（baseline 記録 + compare の 2 run）。** device-windows（Windows 11 10.0.29708 x64、Node v26.13.1）、AE 2026 26.5.3x9 build 9（`D:\4_apps\adobe`、installDir 明示）。`conformance/real-host/` suite を `--conformance --capability-catalog <ae-devtools catalog.json @ d3d332e>` で実行: `--update-snapshots` が win32 baseline（`script-invocation-win32-x64-ae-26.5.3x9-9`、本 commit で追加）を記録 → plain run が committed baseline と比較し **4/4 pass**（各 ~19–22 s、1 launch/test）、全 record `real-host-verified`/`PASS`（29 capability declarations / 17 distinct `ae.operation.*` IDs）、`conformance.json` ok、`cleanup.status=ok`、`quit=true`、AfterFX 残留 0。**実機で観測した失敗経路（すべて設計通り fail-closed）**: (a) 別 AE instance 既存時は `HostNotOwnedError`（kind `attached`、pid 明示）で起動拒否・未接触; (b) test 中に foreign AE 2027 が起動すると teardown が `HostLeftRunning`（"not quitting a host this session does not own (2 instances running)"）で quit を拒否し後続 test を block; (c) 起動した pid が test 中に消失した場合も `HostLeftRunning`（"pid … is gone; 0 other instance(s)"）; (d) 1 回だけ AE が test 途中で終了し 120 s budget timeout → 再実行で pass（AE 側の一過性事象、Application Error log に新規 crash 記録なし。要観察）。TESTCAP03 の refused/cleanup 分類を実機で確認。SDK native plug-in lifecycle は upstream 未整備で依然 BLOCKED。ae-a8n attach-only API（#269, release-0-5-0, 未 publish）には未搭載 — pin は `0.2.0` のまま |
