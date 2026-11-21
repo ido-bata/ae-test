@@ -1,6 +1,6 @@
 {
   "name": "@ido-bata/ae-test",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Playwright-like tests for After Effects plugins and scripts, on top of @ido-bata/ae-a8n.",
   "type": "module",
   "license": "MIT",
@@ -46,7 +46,7 @@
     "check:package": "node scripts/check-packed-package.js"
   },
   "dependencies": {
-    "@ido-bata/ae-a8n": "0.2.0",
+    "@ido-bata/ae-a8n": "0.5.0",
     "pngjs": "7.0.0"
   },
   "devDependencies": {

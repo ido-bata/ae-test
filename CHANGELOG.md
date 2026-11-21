@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.2.1
+
+Patch-level dependency update on the 1.x contract: the
+`@ido-bata/ae-a8n` pin moves `0.2.0` → `0.5.0` exactly (#134). No
+`ae-test` API or runner behavior changes; the bump picks up ae-a8n
+0.5.0's `AfterEffects.attach` hardening and host script fixes
+(ae-a8n #265/#269/#272/#274), which matter on paths that meet a foreign
+After Effects. The owned-session lane remains the primary path.
+
+### Verification
+
+- `fake/mock only` locally against the packed `ae-a8n@0.5.0` tarball
+  (tree-verified against ae-a8n `origin/main` `444665c`): `npm run
+  check` 245/245 green.
+- `automated test` against the published registry: after
+  `@ido-bata/ae-a8n@0.5.0` was published to npm, `npm ci` resolved the
+  registry pin and all checks passed on PR #135 CI.
+
 ## 1.2.0
 
 Patch-level content on the 1.x contract: runner correctness fixes from
