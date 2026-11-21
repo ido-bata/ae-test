@@ -13,8 +13,10 @@ After Effects. The owned-session lane remains the primary path.
 
 - `fake/mock only` locally against the packed `ae-a8n@0.5.0` tarball
   (tree-verified against ae-a8n `origin/main` `444665c`): `npm run
-  check` 245/245 green. `npm ci` against the registry pin and
-  `check-packed-package.js` are blocked until `0.5.0` is published.
+  check` 245/245 green.
+- `automated test` against the published registry: after
+  `@ido-bata/ae-a8n@0.5.0` was published to npm, `npm ci` resolved the
+  registry pin and all checks passed on PR #135 CI.
 
 ## 1.2.0
 
