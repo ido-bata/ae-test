@@ -1,5 +1,36 @@
 # Changelog
 
+## 1.3.0
+
+`@ido-bata/ae-a8n` pin moves `0.5.0` → `0.6.0` exactly (#142). No
+`ae-test` API or runner behavior changes; the bump picks up ae-a8n
+0.6.0's GUI Supervision feature release (`release-0-6-0` train, ae-a8n
+Epic #278: durable supervision state, `ae.supervisionState()`, the
+detached observation-only supervisor, macOS/Windows GUI probes,
+measured safe recovery, and verified session rebuild). ae-test does not
+consume the supervision surface yet; the owned-session lane remains the
+primary path.
+
+### Verification
+
+- `fake/mock only` against the published registry pin:
+  `@ido-bata/ae-a8n@0.6.0` (integrity
+  `sha512-Xvum7zWGDAjTyqkgajPJqCA6Hx9v83v2atFUplo7GvAD0nmjcEoft79vvQo/3VJji/6DvoJuVrEjumiTyciE+w==`)
+  resolved by `npm ci`, and `npm run check:package` green — the packed
+  consumer reports "ae-a8n 0.6.0 from the registry".
+- `npm run check` locally: build/typecheck/lint green; the 245-test
+  suite passed except timing-sensitive `test/lifecycle.test.ts`
+  interruption/drain cases, which flaked under extreme machine load
+  (load average ~45 from concurrent work). The identical flakes
+  reproduce with the previous `0.5.0` pin installed, and the fake
+  transport those tests exercise (`@ido-bata/ae-a8n/testing`) is
+  byte-identical between 0.5.0 and 0.6.0 — the flake is environmental,
+  not a regression from this bump. PR CI is the authoritative
+  automated-test gate.
+- Real After Effects verification against `0.6.0` has not been run;
+  comprehensive real-host acceptance is deferred to the release
+  candidate, per `docs/dependency-on-ae-a8n.md`.
+
 ## 1.2.1
 
 Patch-level dependency update on the 1.x contract: the

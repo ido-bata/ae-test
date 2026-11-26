@@ -8,7 +8,7 @@ nothing about the other.
 
 `.github/workflows/ci.yml`, Ubuntu, no After Effects:
 
-- `npm ci` with `@ido-bata/ae-a8n@0.2.0` from registry.npmjs.org,
+- `npm ci` with `@ido-bata/ae-a8n@0.6.0` from registry.npmjs.org,
   integrity checked against `package-lock.json`, recorded in the job summary;
 - build, typecheck, lint, and the unit/contract test suite (runner, fixtures,
   teardown, snapshots and

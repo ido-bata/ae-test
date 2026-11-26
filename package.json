@@ -46,7 +46,7 @@
     "check:package": "node scripts/check-packed-package.js"
   },
   "dependencies": {
-    "@ido-bata/ae-a8n": "0.5.0",
+    "@ido-bata/ae-a8n": "0.6.0",
     "pngjs": "7.0.0"
   },
   "devDependencies": {

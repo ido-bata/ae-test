@@ -69,7 +69,7 @@ behaved; only a real-host run says that.
 npm install --save-dev @ido-bata/ae-test
 ```
 
-`@ido-bata/ae-a8n` comes with it, pinned to exactly `0.2.0`.
+`@ido-bata/ae-a8n` comes with it, pinned to exactly `0.6.0`.
 
 Requirements: Node 22 or later. TypeScript specs need a Node that strips
 types itself — 22.18+ or 24+ (the CLI exits 2 with a clear message on older
