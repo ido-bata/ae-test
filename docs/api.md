@@ -109,7 +109,7 @@ capability が個別に実機検証された」ことを意味しない — test
 
 ## 依存ポリシー
 
-- `@ido-bata/ae-a8n` は exact version pin（例 `0.2.0`）。
+- `@ido-bata/ae-a8n` は exact version pin（例 `0.6.0`）。
   `TestContext.ae` の型は ae-a8n の型をそのまま露出するため、ae-a8n の
   breaking change は ae-test の breaking change として扱い、pin 更新と
   同一 release で取り込む。range 指定・`latest` は使わない。

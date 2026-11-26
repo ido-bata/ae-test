@@ -3,7 +3,7 @@
 From npm, as one exact published version:
 
 ```json
-"@ido-bata/ae-a8n": "0.5.0"
+"@ido-bata/ae-a8n": "0.6.0"
 ```
 
 - **Exact, not a range.** It is an early-development `0.x` release, and a
@@ -44,7 +44,14 @@ ended.
 
 ## History
 
-- `0.5.0` (this pin) is the `release-0-5-0` train: `AfterEffects.attach`
+- `0.6.0` (this pin) is the `release-0-6-0` train: the GUI Supervision
+  feature release (ae-a8n Epic #278) — durable supervision state
+  (`ae.supervisionState()`, `ae-a8n supervise`), a detached
+  observation-only supervisor, macOS/Windows GUI probes, measured safe
+  recovery, and verified session rebuild (`AfterEffects.rebuild()`).
+  ae-test does not consume the supervision surface; the owned-session
+  lane remains the primary path.
+- `0.5.0` was the `release-0-5-0` train: `AfterEffects.attach`
   (attach-only API, ae-a8n #269), host script hardening (#265) and the
   attach-path review fixes (#272/#274). ae-test keeps its owned-session
   lane as the primary path; the attach hardening matters where a run
